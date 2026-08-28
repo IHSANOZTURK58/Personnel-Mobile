@@ -10,12 +10,10 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
-  // Expo Router'ın sayfa değiştirme motoru
+
   const router = useRouter(); 
 
-  // KENDİ BİLGİSAYARININ IP'SİNİ BURAYA YAZ (Örn: 172.16.71.60)
-  const API_URL = "http://172.16.71.60:8080/api/Auth/login"; 
+  const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/api/Auth/login`; 
 
   const handleLogin = async () => {
     if (!username || !password) {

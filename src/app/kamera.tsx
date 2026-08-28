@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -26,16 +27,16 @@ export default function HomeScreen() {
 
   const [barcodeNumber, setBarcodeNumber] = useState('');
   const [productName, setProductName] = useState('');
+  const [faultCategory, setFaultCategory] = useState('Mekanik Arıza');
   const [defectDescription, setDefectDescription] = useState('');
   
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isFullScreenMode, setIsFullScreenMode] = useState(false); 
   
   const [userRole, setUserRole] = useState<string | null>(null);
-  // 🚀 Kullanıcı adını tutacağımız yeni state
   const [userName, setUserName] = useState<string | null>(null);
+  const [products, setProducts] = useState<any[]>([]);
 
-  // 🚀 Sayfa açıldığında kasadan rolü VE kullanıcı adını çekiyoruz
   useEffect(() => {
     const fetchUserData = async () => {
       const role = await SecureStore.getItemAsync('userRole');
@@ -44,6 +45,38 @@ export default function HomeScreen() {
       setUserName(fullName);
     };
     fetchUserData();
+
+    // API'den dinamik ürün listesini çekme
+   const fetchProducts = async () => {
+  try {
+    const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/lookup/products`;
+    console.log("📡 İstek Atılan URL:", apiUrl);
+
+    // Eğer backend bu endpoint için de kimlik doğrulama (Token) istiyorsa diye ekliyoruz
+    const jwtToken = await SecureStore.getItemAsync('userToken');
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${jwtToken}`
+      }
+    });
+
+    const textResponse = await response.text();
+    console.log("API Yanıtı:", textResponse);
+
+    if (response.ok) {
+      const data = JSON.parse(textResponse);
+      
+      const productList = Array.isArray(data) ? data : (data.items || data.data || []);
+      setProducts(productList);
+    } else {
+      console.log("API Hata Kodu:", response.status);
+    }
+  } catch (error) {
+ 
+  }
+};
+    fetchProducts();
   }, []);
 
   const handleLogout = () => {
@@ -112,6 +145,7 @@ export default function HomeScreen() {
     formData.append('BarcodeNumber', barcodeNumber);
     formData.append('ProductName', productName);
     formData.append('DefectDescription', defectDescription);
+    formData.append('FaultCategory', faultCategory);
     
     formData.append('File', {
       uri: photoUri,
@@ -120,8 +154,7 @@ export default function HomeScreen() {
     } as any);
 
     try {
-      const apiUrl = "http://172.16.71.60:8080/api/FaultyProducts/report-faulty-product";
-      
+      const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/report-faulty-product`;
       const jwtToken = await SecureStore.getItemAsync('userToken'); 
 
       if (!jwtToken) {
@@ -163,7 +196,6 @@ export default function HomeScreen() {
       <Modal visible={isFullScreenMode} transparent={true} animationType="fade">
         <View style={styles.fullScreenModal}>
           <Image source={{ uri: photoUri || '' }} style={styles.fullScreenImage} resizeMode="contain" />
-          
           <TouchableOpacity style={styles.closeModalButton} onPress={() => setIsFullScreenMode(false)}>
             <Text style={styles.closeModalButtonText}>✖ Kapat</Text>
           </TouchableOpacity>
@@ -203,7 +235,6 @@ export default function HomeScreen() {
               <View>
                 <Text style={styles.headerTitle}>Simfer Personel</Text>
                 
-                {/* 🚀 KULLANICI ADI BURAYA EKLENDİ */}
                 {userName && (
                   <Text style={styles.userNameText}>👤 Hoş geldin, {userName}</Text>
                 )}
@@ -234,12 +265,36 @@ export default function HomeScreen() {
               </View>
 
               <Text style={styles.label}>Ürün Adı</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Örn: Ankastre Fırın"
-                value={productName}
-                onChangeText={setProductName}
-              />
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={productName}
+                  onValueChange={(itemValue) => setProductName(itemValue)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Lütfen bir ürün seçin..." value="" color="#999" />
+                  {products?.map((item) => (
+                    <Picker.Item 
+                      key={item.id?.toString() || item.name} 
+                      label={item.name} 
+                      value={item.name} 
+                    />
+                  ))}
+                </Picker>
+              </View>
+
+              <Text style={styles.label}>Hata Türü (Kategori)</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={faultCategory}
+                  onValueChange={(itemValue) => setFaultCategory(itemValue)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Mekanik Arıza" value="Mekanik Arıza" />
+                  <Picker.Item label="Elektronik Arıza" value="Elektronik Arıza" />
+                  <Picker.Item label="Kozmetik Hasar" value="Kozmetik Hasar" />
+                  <Picker.Item label="Diğer" value="Diğer" />
+                </Picker>
+              </View>
 
               <Text style={styles.label}>Hata Açıklaması</Text>
               <TextInput
@@ -300,12 +355,24 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontWeight: '900', color: '#005b9f', letterSpacing: 0.5 },
   
-  // 🚀 Kullanıcı adı stili
   userNameText: { 
     fontSize: 16, 
     fontWeight: 'bold', 
     color: '#2563eb', 
     marginTop: 6 
+  },
+  pickerContainer: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    marginBottom: 20,
+    overflow: 'hidden',
+    justifyContent: 'center'
+  },
+  picker: {
+    height: 55,
+    width: '100%',
   },
   
   headerSubtitle: { fontSize: 14, color: '#666', marginTop: 6, fontWeight: '500' },
@@ -370,4 +437,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-})
+});

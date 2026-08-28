@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
-  
   const [userName, setUserName] = useState(''); 
+  const [userRole, setUserRole] = useState(''); 
 
   useEffect(() => {
     fetchUserProfile();
@@ -17,19 +17,19 @@ export default function HomeScreen() {
   const fetchUserProfile = async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await axios.get("http://172.16.71.60:8080/api/User/profil", {
+      const response = await axios.get(`${process.env.EXPO_PUBLIC_API_URL}/api/User/profil`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.data.success) {
         setUserName(response.data.data.fullName); 
+        setUserRole(response.data.data.role);
       }
     } catch (error) {
       console.error("Profil çekme hatası:", error);
     }
   };
 
-  // 🚀 Çıkış Yapma Fonksiyonu
   const handleLogout = () => {
     Alert.alert(
       "Çıkış Yap",
@@ -38,10 +38,10 @@ export default function HomeScreen() {
         { text: "İptal", style: "cancel" },
         { 
           text: "Çıkış Yap", 
-          style: "destructive", // Rengini kırmızı yapar (iOS'ta)
+          style: "destructive", 
           onPress: async () => {
-            await SecureStore.deleteItemAsync('userToken'); // Token'ı temizle
-            router.replace('/'); // Login sayfasına (index) geri dön
+            await SecureStore.deleteItemAsync('userToken'); 
+            router.replace('/'); 
           }
         }
       ]
@@ -49,137 +49,199 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={{ padding: 20, paddingBottom: 60 }} 
-      showsVerticalScrollIndicator={false}
-    >
-      {/* 🚀 Üst Kısım: Karşılama ve Çıkış Butonu Yan Yana */}
-      <View style={styles.headerContainer}>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.greeting}>Hoş Geldiniz,</Text>
-          {userName ? <Text style={styles.nameText}>{userName}</Text> : null}
-          <Text style={styles.subtitle}>Lütfen yapmak istediğiniz işlemi seçin</Text>
+    <View style={styles.container}>
+      <Stack.Screen 
+        options={{ 
+          title: 'Simfer Hata Rapor Sistemi',
+          headerTitleAlign: 'center',
+          headerTitleStyle: { 
+            color: '#000000',
+            fontWeight: '900', 
+            fontSize: 18 
+          },
+          headerStyle: { backgroundColor: '#f8fafc' },
+          headerShadowVisible: false, 
+        }} 
+      />
+
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+      >
+        
+        {/* Üst Kısım: Karşılama */}
+        <View style={styles.headerContainer}>
+          <View>
+            <Text style={styles.greeting}>İyi Çalışmalar,</Text>
+            <Text style={styles.nameText}>{userName || "Yükleniyor..."}</Text>
+            {/* 🚀 Rol Bilgisi Burada */}
+            {userRole ? <Text style={styles.roleText}>{userRole}</Text> : null}
+          </View>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
+            <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+          </TouchableOpacity>
         </View>
 
-        {/* Çıkış Butonu */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={26} color="#dc2626" />
-        </TouchableOpacity>
-      </View>
+        {/* Üstteki İkili Menü: Liste ve Personel */}
+        <View style={styles.gridContainer}>
+          <TouchableOpacity 
+            style={styles.gridCard} 
+            onPress={() => router.push('/liste')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.gridIcon, { backgroundColor: '#eff6ff' }]}>
+              <Ionicons name="list" size={34} color="#3b82f6" />
+            </View>
+            <Text style={styles.gridTitle}>Arıza Listesi</Text>
+            <Text style={styles.gridDesc}>Tüm kayıtları görüntüle</Text>
+          </TouchableOpacity>
 
-      <View style={styles.menuContainer}>
-        
-        <TouchableOpacity 
-          style={styles.card} 
-          onPress={() => router.push('/personel')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: '#fef2f2' }]}>
-            <Ionicons name="people-outline" size={40} color="#dc2626" />
-          </View>
-          <Text style={styles.cardTitle}>Personel Yönetimi</Text>
-          <Text style={styles.cardDesc}>Sistemdeki kullanıcıları listele, sil veya yeni ekle</Text>
-        </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.gridCard} 
+            onPress={() => router.push('/personel')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.gridIcon, { backgroundColor: '#fef2f2' }]}>
+              <Ionicons name="people" size={34} color="#ef4444" />
+            </View>
+            <Text style={styles.gridTitle}>Personeller</Text>
+            <Text style={styles.gridDesc}>Sistemdeki kullanıcılar</Text>
+          </TouchableOpacity>
+        </View>
 
+        {/* Alttaki Geniş Ana Eylem: Arıza Bildir */}
         <TouchableOpacity 
-          style={styles.card} 
-          onPress={() => router.push('/liste')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.iconContainer, { backgroundColor: '#eff6ff' }]}>
-            <Ionicons name="list-outline" size={40} color="#2563eb" />
-          </View>
-          <Text style={styles.cardTitle}>Arıza Listesi</Text>
-          <Text style={styles.cardDesc}>Tüm arızaları ve durumlarını görüntüle</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.card} 
+          style={styles.heroCard} 
           onPress={() => router.push('/kamera')}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
-          <View style={[styles.iconContainer, { backgroundColor: '#f0fdf4' }]}>
-            <Ionicons name="qr-code-outline" size={40} color="#16a34a" />
+          <View style={styles.heroTextContainer}>
+            <Text style={styles.heroTitle}>Yeni Arıza Bildir</Text>
+            <Text style={styles.heroDesc}>Cihaz barkodunu okutarak anında hata kaydı oluşturun.</Text>
           </View>
-          <Text style={styles.cardTitle}>Arıza Bildir</Text>
-          <Text style={styles.cardDesc}>Barkod okutarak yeni arıza kaydı oluştur</Text>
+          <View style={styles.heroIconBadge}>
+            <Ionicons name="qr-code" size={36} color="#16a34a" />
+          </View>
         </TouchableOpacity>
 
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f4f4f5', 
+    backgroundColor: '#f8fafc',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20, 
+    paddingBottom: 40,
   },
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: 50,
-    marginBottom: 30,
-  },
-  headerTextContainer: {
-    flex: 1, // Yazıların sağdaki butonu ezmemesi için
+    alignItems: 'center', 
+    marginBottom: 35,
   },
   greeting: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 16,
+    color: '#64748b',
+    marginBottom: 4,
+    fontWeight: '500',
   },
   nameText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2563eb',
-    marginTop: 2,
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0f172a',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    marginTop: 8,
-    paddingRight: 10,
+  roleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3b82f6', // Şık bir mavi tonu
+    marginTop: 4,
+    textTransform: 'uppercase', // Yazıyı tamamen büyük harf yapar
+    letterSpacing: 0.5,
   },
   logoutBtn: {
-    backgroundColor: '#fee2e2', // Hafif kırmızı arka plan
-    padding: 10,
-    borderRadius: 12,
+    backgroundColor: '#fee2e2',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
   },
-  menuContainer: {
+  gridContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15, 
   },
-  card: {
-    backgroundColor: 'white',
-    borderRadius: 15,
+  gridCard: {
+    width: '48%',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
     padding: 20,
-    marginBottom: 20, 
+    alignItems: 'flex-start',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
+  gridIcon: {
+    width: 55,
+    height: 55,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
   },
-  cardTitle: {
-    fontSize: 20,
+  gridTitle: {
+    fontSize: 17,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 5,
+    color: '#1e293b',
+    marginBottom: 6,
   },
-  cardDesc: {
+  gridDesc: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  heroTextContainer: {
+    flex: 1,
+    paddingRight: 15,
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 8,
+  },
+  heroDesc: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#64748b',
+    lineHeight: 20,
+  },
+  heroIconBadge: {
+    backgroundColor: '#f0fdf4', 
+    width: 65,
+    height: 65,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   }
+  
 });

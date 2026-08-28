@@ -12,13 +12,12 @@ export default function PersonelScreen() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const API_BASE_URL = "http://172.16.71.60:8080/api/User"; 
+  const API_BASE_URL = `${process.env.EXPO_PUBLIC_API_URL}/api/User`; 
 
   useEffect(() => {
     fetchPersonnel();
   }, []);
 
-  // Arama metni değiştikçe listeyi filtrele
   useEffect(() => {
     if (searchQuery) {
       const filtered = personnel.filter(p => 
@@ -31,10 +30,12 @@ export default function PersonelScreen() {
     }
   }, [searchQuery, personnel]);
 
-  const fetchPersonnel = async () => {
+ const fetchPersonnel = async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await axios.get(`${API_BASE_URL}/Employee-listesi`, {
+      
+      const tamAdres = `${API_BASE_URL}/Employee-listesi`;
+      const response = await axios.get(tamAdres, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -43,7 +44,7 @@ export default function PersonelScreen() {
         setFilteredPersonnel(response.data.data);
       }
     } catch (error: any) {
-      console.error("Personel çekme hatası:", error);
+      console.log("3. Axios Hata Detayı:", error.message);
       Alert.alert("Hata", "Personel listesi alınamadı. Yetkiniz olmayabilir.");
     } finally {
       setLoading(false);

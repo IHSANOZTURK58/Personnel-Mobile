@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -25,7 +25,7 @@ export default function PersonelEkleScreen() {
     { label: 'Admin', value: 'Admin' }
   ];
 
-  const API_URL = "http://172.16.71.60:8080/api/User/add-user"; 
+  const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/api/User/add-user`; 
 
   const handleAddUser = async () => {
     if (!firstName || !lastName || !username || !password) {
@@ -65,6 +65,7 @@ export default function PersonelEkleScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#1f2937" />

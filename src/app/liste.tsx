@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import ImageViewer from 'react-native-image-zoom-viewer';
 
 export default function FaultListScreen() {
   const [faults, setFaults] = useState<any[]>([]);
@@ -24,7 +25,7 @@ export default function FaultListScreen() {
     setLoading(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await fetch("http://172.16.71.60:8080/api/FaultyProducts/get-all", {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/get-all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -52,7 +53,7 @@ export default function FaultListScreen() {
           onPress: async () => {
             try {
               const token = await SecureStore.getItemAsync('userToken');
-              const apiUrl = `http://172.16.71.60:8080/api/FaultyProducts/cozuldu-isaretle/${itemId}`;
+              const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/cozuldu-isaretle/${itemId}`;
 
               const response = await fetch(apiUrl, {
                 method: 'PUT',
@@ -75,12 +76,11 @@ export default function FaultListScreen() {
     );
   };
 
-  // 🚀 Resim linkini arka planda çeken fonksiyon
   const fetchImageUrl = async (fileName: string) => {
     setImageLoading(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await fetch(`http://172.16.71.60:8080/api/FaultyProducts/get-image-url/${fileName}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/get-image-url/${fileName}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -110,7 +110,6 @@ export default function FaultListScreen() {
     return fault.imageFileName || fault.ImageFileName;
   };
 
-  // 🚀 Karta tıklandığında hem modali açar hem de resmi yüklemeye başlar
   const openDetailModal = (item: any) => {
     setSelectedFault(item);
     setModalVisible(true);
@@ -135,11 +134,22 @@ export default function FaultListScreen() {
         
         <Text style={styles.description} numberOfLines={3}>{item.defectDescription}</Text>
         
-        <View style={styles.dateContainer}>
-          <Ionicons name="calendar-outline" size={14} color="#9ca3af" />
-          <Text style={styles.dateText}>
-            {new Date(item.createdDate).toLocaleDateString('tr-TR')} - {new Date(item.createdDate).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}
-          </Text>
+        <View style={styles.infoRowContainer}>
+          {/* Tarih */}
+          <View style={styles.iconTextGroup}>
+            <Ionicons name="calendar-outline" size={14} color="#9ca3af" />
+            <Text style={styles.infoText}>
+              {new Date(item.createdDate).toLocaleDateString('tr-TR')} - {new Date(item.createdDate).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}
+            </Text>
+          </View>
+          
+          {/* 🚀 YENİ: Raporlayan Kişi */}
+          <View style={styles.iconTextGroup}>
+            <Ionicons name="person-outline" size={14} color="#9ca3af" />
+            <Text style={styles.infoText} numberOfLines={1}>
+              {item.reporterName || "Bilinmiyor"} 
+            </Text>
+          </View>
         </View>
 
         <View style={styles.cardFooter}>
@@ -217,8 +227,6 @@ export default function FaultListScreen() {
         />
       )}
 
-      {/* 🚀 ARIZA DETAYLARI POPUP'I */}
-      {/* onRequestClose özelliği Android'deki fiziksel geri tuşunun pencereyi kapatmasını sağlar */}
       <Modal 
         visible={modalVisible} 
         transparent={true} 
@@ -245,7 +253,11 @@ export default function FaultListScreen() {
                   {new Date(selectedFault.createdDate).toLocaleDateString('tr-TR')} - {new Date(selectedFault.createdDate).toLocaleTimeString('tr-TR')}
                 </Text>
 
-                {/* 🚀 DEĞİŞEN KISIM: Fotoğraf artık en altta açık olarak geliyor */}
+                <Text style={styles.modalLabel}>Raporlayan Kişi:</Text>
+                <Text style={styles.modalText}>
+                  {selectedFault.reporterName || "Bilinmiyor"} {/* Kendi API'ne göre değiştir */}
+                </Text>
+
                 <View style={styles.imageSectionContainer}>
                   <Text style={styles.modalLabel}>Arıza Fotoğrafı:</Text>
                   
@@ -283,37 +295,35 @@ export default function FaultListScreen() {
         </View>
       </Modal>
 
-      {/* 🚀 TAM EKRAN (ZOOM) FOTOĞRAF ALANI */}
-      {/* onRequestClose ile telefonun geri tuşu bu pencereyi de sorunsuz kapatır */}
-      <Modal 
+  <Modal 
         visible={imageFullScreenVisible} 
         transparent={true} 
-        animationType="slide"
         onRequestClose={() => setImageFullScreenVisible(false)}
       >
-        <View style={styles.fullScreenImageOverlay}>
-          
-          <TouchableOpacity style={styles.fullScreenCloseButton} onPress={() => setImageFullScreenVisible(false)}>
-            <Text style={styles.fullScreenCloseText}>Kapat ✖</Text>
-          </TouchableOpacity>
-
-          <ScrollView 
-            contentContainerStyle={styles.zoomableScrollContainer}
-            maximumZoomScale={5} 
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-          >
-            {fullScreenImageUrl && (
-              <Image 
-                source={{ uri: fullScreenImageUrl }}
-                style={styles.fullScreenZoomImage}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-
-        </View>
+        <ImageViewer 
+          imageUrls={fullScreenImageUrl ? [{ url: fullScreenImageUrl }] : []}
+          enableSwipeDown={true} 
+          onSwipeDown={() => setImageFullScreenVisible(false)}
+          onCancel={() => setImageFullScreenVisible(false)}
+          renderIndicator={() => <></>}
+          renderHeader={() => (
+            <TouchableOpacity 
+              style={{ 
+                position: 'absolute', 
+                top: 45, 
+                right: 20, 
+                zIndex: 9999, 
+                padding: 10, 
+                backgroundColor: 'rgba(255, 255, 255, 0.2)', 
+                borderRadius: 20 
+              }}
+              onPress={() => setImageFullScreenVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={28} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+        />
       </Modal>
 
     </View>
@@ -332,8 +342,8 @@ const styles = StyleSheet.create({
 
   tabContainer: { flexDirection: 'row', padding: 20, paddingBottom: 10 },
   tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: '#e5e7eb', marginHorizontal: 5, borderRadius: 8 },
-  activeTabBekleyen: { backgroundColor: '#ef4444' }, 
-  activeTabCozulen: { backgroundColor: '#10b981' }, 
+  activeTabBekleyen: { backgroundColor: '#1e293b' }, 
+  activeTabCozulen: { backgroundColor: '#1e293b' },
   tabText: { fontSize: 15, fontWeight: 'bold', color: '#4b5563' },
   activeTabText: { color: '#ffffff' },
   
@@ -344,14 +354,19 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, color: '#4b5563', marginBottom: 12, lineHeight: 20 },
   dateContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   dateText: { fontSize: 13, color: '#9ca3af', marginLeft: 6 },
+
+  infoRowContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingRight: 10 },
+  iconTextGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  infoText: { fontSize: 13, color: '#6b7280', marginLeft: 6, marginRight: 10 },
+  modalText: { fontSize: 15, color: '#4b5563', marginBottom: 20 },
   
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 12 },
-  pendingBadge: { backgroundColor: '#fee2e2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  pendingBadgeText: { color: '#dc2626', fontWeight: 'bold', fontSize: 13 },
-  actionPillButton: { flexDirection: 'row', backgroundColor: '#ef4444', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+ pendingBadge: { backgroundColor: '#fff7ed', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  pendingBadgeText: { color: '#c2410c', fontWeight: 'bold', fontSize: 13 },
+  actionPillButton: { flexDirection: 'row', backgroundColor: '#0284c7', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   actionPillText: { color: 'white', fontWeight: 'bold', fontSize: 13, marginLeft: 6 },
-  resolvedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ecfdf5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  resolvedBadgeText: { color: '#10b981', fontWeight: 'bold', fontSize: 14 },
+  resolvedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  resolvedBadgeText: { color: '#166534', fontWeight: 'bold', fontSize: 14 },
   emptyText: { textAlign: 'center', color: '#6b7280', fontSize: 15, marginTop: 50 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -364,17 +379,10 @@ const styles = StyleSheet.create({
   modalDescription: { fontSize: 15, color: '#4b5563', lineHeight: 22, marginBottom: 20 },
   modalDate: { fontSize: 14, color: '#6b7280', marginBottom: 20 },
 
-  // 🚀 YENİ İÇ İÇE FOTOĞRAF STİLLERİ
   imageSectionContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 15, paddingBottom: 20 },
   inlineModalImage: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb' },
   zoomHintContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8 },
   zoomHintText: { color: '#6b7280', fontSize: 13, fontStyle: 'italic', marginLeft: 5 },
   noImageContainer: { width: '100%', padding: 20, backgroundColor: '#f3f4f6', borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
   noImageText: { color: '#9ca3af', fontWeight: 'bold', fontStyle: 'italic', marginTop: 10 },
-
-  fullScreenImageOverlay: { flex: 1, backgroundColor: 'black', justifyContent: 'center' },
-  fullScreenCloseButton: { position: 'absolute', top: 50, right: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 8 },
-  fullScreenCloseText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  zoomableScrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
-  fullScreenZoomImage: { width: '100%', height: '100%', minHeight: 400 }
 });
