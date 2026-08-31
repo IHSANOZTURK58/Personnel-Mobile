@@ -55,11 +55,11 @@ export default function HomeScreen() {
           title: 'Simfer Hata Rapor Sistemi',
           headerTitleAlign: 'center',
           headerTitleStyle: { 
-            color: '#000000',
+            color: '#ffffff',
             fontWeight: '900', 
             fontSize: 18 
           },
-          headerStyle: { backgroundColor: '#f8fafc' },
+          headerStyle: { backgroundColor: '#005b9f' },
           headerShadowVisible: false, 
         }} 
       />
@@ -74,7 +74,6 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.greeting}>İyi Çalışmalar,</Text>
             <Text style={styles.nameText}>{userName || "Yükleniyor..."}</Text>
-            {/* 🚀 Rol Bilgisi Burada */}
             {userRole ? <Text style={styles.roleText}>{userRole}</Text> : null}
           </View>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
@@ -159,9 +158,9 @@ const styles = StyleSheet.create({
   roleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3b82f6', // Şık bir mavi tonu
+    color: '#3b82f6', 
     marginTop: 4,
-    textTransform: 'uppercase', // Yazıyı tamamen büyük harf yapar
+    textTransform: 'uppercase', 
     letterSpacing: 0.5,
   },
   logoutBtn: {
@@ -243,5 +242,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   }
-  
 });
