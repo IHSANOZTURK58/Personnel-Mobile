@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker'; // YENİ EKLENDİ
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
@@ -11,13 +12,19 @@ export default function FaultListScreen() {
   const [activeTab, setActiveTab] = useState<'bekleyen' | 'cozulen'>('bekleyen');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // FİLTRE STATE'LERİ
   const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); 
-  const [timeFilter, setTimeFilter] = useState<'tumu' | '7gun' | '1ay' | '6ay'>('tumu');
+  const [timeFilter, setTimeFilter] = useState<'tumu' | '7gun' | '1ay' | '6ay' | 'ozel'>('tumu');
   
   const [categoryModalVisible, setCategoryModalVisible] = useState(false); 
   const [timeModalVisible, setTimeModalVisible] = useState(false); 
+  
+  // GÜNCELLENDİ: Özel Tarih State'leri (Artık metin değil Date tutuyoruz)
+  const [customDateModalVisible, setCustomDateModalVisible] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedFault, setSelectedFault] = useState<any>(null);
@@ -136,37 +143,57 @@ export default function FaultListScreen() {
 
   const categories = ['Tümü', ...Array.from(new Set(faults.map(f => f.productName || f.ProductName))).filter(Boolean)];
 
+  // GÜNCELLENDİ: Tarih metinlerini Date objesinden çıkarıyoruz
   const getTimeLabel = () => {
     switch(timeFilter) {
       case '7gun': return 'Son 7 Gün';
       case '1ay': return 'Son 1 Ay';
       case '6ay': return 'Son 6 Ay';
+      case 'ozel': 
+        const sDate = customStartDate ? customStartDate.toLocaleDateString('tr-TR') : '?';
+        const eDate = customEndDate ? customEndDate.toLocaleDateString('tr-TR') : '?';
+        return `${sDate} - ${eDate}`;
       default: return 'Tüm Zamanlar';
     }
   };
 
+  const applyCustomDateFilter = () => {
+    if (!customStartDate || !customEndDate) {
+      Alert.alert("Eksik Bilgi", "Lütfen başlangıç ve bitiş tarihlerini seçiniz.");
+      return;
+    }
+    if (customStartDate > customEndDate) {
+      Alert.alert("Hatalı Tarih", "Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+      return;
+    }
+    setTimeFilter('ozel');
+    setCustomDateModalVisible(false);
+  };
+
+  // GÜNCELLENDİ: Date nesnelerine göre milisaniye (timestamp) bazlı kusursuz filtreleme
   const filteredFaults = faults
     .filter(fault => {
-      // 1. Tab Filtresi (Bekleyen/Çözülen)
       const isRes = fault.isResolved !== undefined ? fault.isResolved : fault.IsResolved;
       const matchesTab = activeTab === 'bekleyen' ? isRes === false : isRes === true;
       
-      // 2. Arama Filtresi
       const barcode = fault.barcodeNumber || fault.BarcodeNumber || '';
       const matchesSearch = barcode.toString().toLowerCase().includes(searchQuery.toLowerCase());
       
-      // 3. Kategori Filtresi
       const prodName = fault.productName || fault.ProductName;
       const matchesCategory = selectedCategory === 'Tümü' || prodName === selectedCategory;
 
-      // 4. Zaman Filtresi
       const faultDate = new Date(fault.createdDate || fault.CreatedDate).getTime();
       const now = new Date().getTime();
-      let timeLimit = 0;
-      if (timeFilter === '7gun') timeLimit = now - (7 * 24 * 60 * 60 * 1000);
-      if (timeFilter === '1ay') timeLimit = now - (30 * 24 * 60 * 60 * 1000);
-      if (timeFilter === '6ay') timeLimit = now - (180 * 24 * 60 * 60 * 1000);
-      const matchesTime = timeFilter === 'tumu' || faultDate >= timeLimit;
+      let matchesTime = true;
+
+      if (timeFilter === '7gun') matchesTime = faultDate >= (now - 7 * 24 * 60 * 60 * 1000);
+      else if (timeFilter === '1ay') matchesTime = faultDate >= (now - 30 * 24 * 60 * 60 * 1000);
+      else if (timeFilter === '6ay') matchesTime = faultDate >= (now - 180 * 24 * 60 * 60 * 1000);
+      else if (timeFilter === 'ozel' && customStartDate && customEndDate) {
+        const sTime = new Date(customStartDate).setHours(0, 0, 0, 0);
+        const eTime = new Date(customEndDate).setHours(23, 59, 59, 999);
+        matchesTime = faultDate >= sTime && faultDate <= eTime;
+      }
       
       return matchesTab && matchesSearch && matchesCategory && matchesTime;
     })
@@ -236,13 +263,13 @@ export default function FaultListScreen() {
                 onPress={() => openResolveModal(targetId)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="add-circle-outline" size={18} color="white" />
-                <Text style={styles.actionPillText}>Çözüldü</Text>
+                <Ionicons name="build-outline" size={16} color="white" />
+                <Text style={styles.actionPillText}>Çözümle</Text>
               </TouchableOpacity>
             </>
           ) : (
             <View style={styles.resolvedBadge}>
-              <Ionicons name="checkmark-circle" size={18} color="#10b981" style={{ marginRight: 6 }} />
+              <Ionicons name="checkmark-circle" size={18} color="#166534" style={{ marginRight: 6 }} />
               <Text style={styles.resolvedBadgeText}>Çözüldü</Text>
             </View>
           )}
@@ -261,32 +288,20 @@ export default function FaultListScreen() {
         <Text style={styles.pageTitle}>Arıza Listesi</Text>
       </View>
 
-      <View style={styles.statsContainer}>
-          <View style={[styles.statBox, { backgroundColor: '#fff3cd' }]}>
-              <Text style={styles.statNumber}>{pendingCount}</Text>
-              <Text style={styles.statLabel}>⏳ Bekleyen</Text>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: '#d1e7dd' }]}>
-              <Text style={styles.statNumber}>{resolvedCount}</Text>
-              <Text style={styles.statLabel}>✅ Çözülen</Text>
-          </View>
-      </View>
-
       <View style={styles.tabContainer}>
-        <TouchableOpacity style={[styles.tabButton, activeTab === 'bekleyen' && styles.activeTabBekleyen]} onPress={() => setActiveTab('bekleyen')}>
-          <Text style={[styles.tabText, activeTab === 'bekleyen' && styles.activeTabText]}>Bekleyenler</Text>
+        <TouchableOpacity style={[styles.tabButton, activeTab === 'bekleyen' && styles.activeTab]} onPress={() => setActiveTab('bekleyen')}>
+          <Text style={[styles.tabText, activeTab === 'bekleyen' && styles.activeTabText]}>Bekleyenler ({pendingCount})</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabButton, activeTab === 'cozulen' && styles.activeTabCozulen]} onPress={() => setActiveTab('cozulen')}>
-          <Text style={[styles.tabText, activeTab === 'cozulen' && styles.activeTabText]}>Çözülenler</Text>
+        <TouchableOpacity style={[styles.tabButton, activeTab === 'cozulen' && styles.activeTab]} onPress={() => setActiveTab('cozulen')}>
+          <Text style={[styles.tabText, activeTab === 'cozulen' && styles.activeTabText]}>Çözülenler ({resolvedCount})</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.controlsRow}>
         <View style={styles.searchContainer}>
           <TouchableOpacity onPress={openScanner} style={styles.scannerButton}>
-            <Ionicons name="barcode-outline" size={24} color="#0284c7" />
+            <Ionicons name="barcode-outline" size={24} color="#005b9f" />
           </TouchableOpacity>
-          
           <TextInput
             style={styles.searchInput}
             placeholder="Barkod numarası ara..."
@@ -302,22 +317,21 @@ export default function FaultListScreen() {
         </View>
       </View>
 
-      {/* YENİ: YATAY FİLTRE ÇİPLERİ */}
       <View style={styles.filtersScrollContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
           
           <TouchableOpacity style={styles.filterChip} onPress={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}>
-            <Ionicons name={sortOrder === 'desc' ? "arrow-down-outline" : "arrow-up-outline"} size={16} color="#0284c7" />
+            <Ionicons name={sortOrder === 'desc' ? "arrow-down-outline" : "arrow-up-outline"} size={16} color="#005b9f" />
             <Text style={styles.filterChipText}>{sortOrder === 'desc' ? "En Yeni" : "En Eski"}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.filterChip} onPress={() => setTimeModalVisible(true)}>
-            <Ionicons name="calendar-outline" size={16} color="#0284c7" />
+            <Ionicons name="calendar-outline" size={16} color="#005b9f" />
             <Text style={styles.filterChipText}>{getTimeLabel()}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.filterChip} onPress={() => setCategoryModalVisible(true)}>
-            <Ionicons name="layers-outline" size={16} color="#0284c7" />
+            <Ionicons name="layers-outline" size={16} color="#005b9f" />
             <Text style={styles.filterChipText}>{selectedCategory === 'Tümü' ? 'Tüm Kategoriler' : selectedCategory}</Text>
           </TouchableOpacity>
 
@@ -378,7 +392,7 @@ export default function FaultListScreen() {
                   <Text style={[styles.dropdownItemText, selectedCategory === cat && styles.dropdownItemTextActive]}>
                     {cat as string}
                   </Text>
-                  {selectedCategory === cat && <Ionicons name="checkmark-circle" size={20} color="#0284c7" />}
+                  {selectedCategory === cat && <Ionicons name="checkmark-circle" size={20} color="#005b9f" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -386,7 +400,7 @@ export default function FaultListScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* YENİ: ZAMAN FİLTRESİ MODALI */}
+      {/* ZAMAN FİLTRESİ MODALI */}
       <Modal visible={timeModalVisible} transparent={true} animationType="fade" onRequestClose={() => setTimeModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setTimeModalVisible(false)}>
           <View style={styles.dropdownModalContent}>
@@ -396,22 +410,93 @@ export default function FaultListScreen() {
                 { id: 'tumu', label: 'Tüm Zamanlar' },
                 { id: '7gun', label: 'Son 7 Gün' },
                 { id: '1ay', label: 'Son 1 Ay' },
-                { id: '6ay', label: 'Son 6 Ay' }
+                { id: '6ay', label: 'Son 6 Ay' },
+                { id: 'ozel', label: 'Özel Tarih Aralığı' }
               ].map((timeOpt) => (
                 <TouchableOpacity 
                   key={timeOpt.id} 
                   style={[styles.dropdownItem, timeFilter === timeOpt.id && styles.dropdownItemActive]} 
-                  onPress={() => { setTimeFilter(timeOpt.id as any); setTimeModalVisible(false); }}
+                  onPress={() => { 
+                    if (timeOpt.id === 'ozel') {
+                      setTimeModalVisible(false);
+                      setCustomDateModalVisible(true);
+                    } else {
+                      setTimeFilter(timeOpt.id as any); 
+                      setTimeModalVisible(false); 
+                    }
+                  }}
                 >
                   <Text style={[styles.dropdownItemText, timeFilter === timeOpt.id && styles.dropdownItemTextActive]}>
                     {timeOpt.label}
                   </Text>
-                  {timeFilter === timeOpt.id && <Ionicons name="checkmark-circle" size={20} color="#0284c7" />}
+                  {timeFilter === timeOpt.id && <Ionicons name="checkmark-circle" size={20} color="#005b9f" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* GÜNCELLENDİ: ÖZEL TARİH MODALI (Takvim Seçimli) */}
+      <Modal visible={customDateModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCustomDateModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Özel Tarih Aralığı</Text>
+            
+            <Text style={styles.modalLabel}>Başlangıç Tarihi</Text>
+            <TouchableOpacity 
+              style={styles.dateInput} 
+              onPress={() => setShowStartPicker(true)}
+            >
+              <Text style={{ color: customStartDate ? '#1e293b' : '#9ca3af', fontSize: 15 }}>
+                {customStartDate ? customStartDate.toLocaleDateString('tr-TR') : 'Tarih Seçmek İçin Dokunun'}
+              </Text>
+            </TouchableOpacity>
+
+            {showStartPicker && (
+              <DateTimePicker
+                value={customStartDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowStartPicker(false); // Seçim yapıldığında gizle
+                  if (selectedDate) setCustomStartDate(selectedDate);
+                }}
+              />
+            )}
+
+            <Text style={styles.modalLabel}>Bitiş Tarihi</Text>
+            <TouchableOpacity 
+              style={styles.dateInput} 
+              onPress={() => setShowEndPicker(true)}
+            >
+              <Text style={{ color: customEndDate ? '#1e293b' : '#9ca3af', fontSize: 15 }}>
+                {customEndDate ? customEndDate.toLocaleDateString('tr-TR') : 'Tarih Seçmek İçin Dokunun'}
+              </Text>
+            </TouchableOpacity>
+
+            {showEndPicker && (
+              <DateTimePicker
+                value={customEndDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowEndPicker(false); // Seçim yapıldığında gizle
+                  if (selectedDate) setCustomEndDate(selectedDate);
+                }}
+              />
+            )}
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+              <TouchableOpacity onPress={() => setCustomDateModalVisible(false)} style={{ marginRight: 20, justifyContent: 'center' }}>
+                <Text style={{ color: '#6b7280', fontWeight: 'bold' }}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={applyCustomDateFilter} style={styles.actionPillButton}>
+                <Text style={styles.actionPillText}>Filtrele</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* DETAY MODALI */}
@@ -462,7 +547,7 @@ export default function FaultListScreen() {
                   
                   {getImageName(selectedFault) ? (
                     imageLoading ? (
-                      <ActivityIndicator size="small" color="#0ea5e9" style={{ marginTop: 20 }} />
+                      <ActivityIndicator size="small" color="#005b9f" style={{ marginTop: 20 }} />
                     ) : fullScreenImageUrl ? (
                       <TouchableOpacity 
                         activeOpacity={0.9} 
@@ -540,35 +625,28 @@ export default function FaultListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f8' },
-  header: { padding: 20, paddingTop: 50, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  header: { padding: 20, paddingTop: 50, backgroundColor: '#ffffff' },
   pageTitle: { fontSize: 22, fontWeight: 'bold', color: '#1f2937' },
   
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginTop: 15 },
-  statBox: { flex: 1, padding: 12, borderRadius: 10, alignItems: 'center', marginHorizontal: 5, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', elevation: 1 },
-  statNumber: { fontSize: 22, fontWeight: 'bold', color: '#1f2937' },
-  statLabel: { fontSize: 13, fontWeight: '600', marginTop: 4, color: '#4b5563' },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 20, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  tabButton: { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomColor: '#005b9f' }, 
+  tabText: { fontSize: 15, fontWeight: '600', color: '#64748b' },
+  activeTabText: { color: '#005b9f', fontWeight: 'bold' },
 
-  tabContainer: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 15 },
-  tabButton: { flex: 1, paddingVertical: 10, alignItems: 'center', backgroundColor: '#e5e7eb', marginHorizontal: 5, borderRadius: 8 },
-  activeTabBekleyen: { backgroundColor: '#1e293b' }, 
-  activeTabCozulen: { backgroundColor: '#1e293b' },
-  tabText: { fontSize: 14, fontWeight: 'bold', color: '#4b5563' },
-  activeTabText: { color: '#ffffff' },
-
-  controlsRow: { marginHorizontal: 20, marginTop: 15, marginBottom: 10 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 15, borderWidth: 1, borderColor: '#d1d5db', height: 48, elevation: 1 },
+  controlsRow: { marginHorizontal: 20, marginTop: 20, marginBottom: 10 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 8, paddingHorizontal: 15, borderWidth: 1, borderColor: '#e2e8f0', height: 48 },
   scannerButton: { marginRight: 10, padding: 5 }, 
   searchInput: { flex: 1, fontSize: 15, color: '#1f2937' },
   clearSearchIcon: { marginLeft: 10, padding: 2 },
 
-  // YENİ: Çip (Hap) Filtre Tasarımları
   filtersScrollContainer: { marginHorizontal: 20, marginBottom: 15 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f9ff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#bae6fd', marginRight: 10 },
-  filterChipText: { fontSize: 13, color: '#0284c7', fontWeight: 'bold', marginLeft: 6 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0', marginRight: 10 },
+  filterChipText: { fontSize: 13, color: '#475569', fontWeight: '600', marginLeft: 6 },
 
   scannerContainer: { flex: 1, backgroundColor: 'black' },
   scannerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  scannerTarget: { width: 250, height: 250, borderWidth: 2, borderColor: '#0284c7', backgroundColor: 'transparent', borderRadius: 20, marginBottom: 20 },
+  scannerTarget: { width: 250, height: 250, borderWidth: 2, borderColor: '#005b9f', backgroundColor: 'transparent', borderRadius: 20, marginBottom: 20 },
   scannerText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
   scannerCloseButton: { position: 'absolute', top: 50, right: 20, padding: 10, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 25 },
 
@@ -577,43 +655,45 @@ const styles = StyleSheet.create({
   dropdownItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8 },
   dropdownItemActive: { backgroundColor: '#f0f9ff' },
   dropdownItemText: { fontSize: 15, color: '#4b5563' },
-  dropdownItemTextActive: { color: '#0284c7', fontWeight: 'bold' },
+  dropdownItemTextActive: { color: '#005b9f', fontWeight: 'bold' },
   
-  card: { backgroundColor: '#ffffff', padding: 16, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#e5e7eb', elevation: 2 },
+  card: { backgroundColor: '#ffffff', padding: 16, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  productName: { fontSize: 17, fontWeight: 'bold', color: '#111827' },
-  barcode: { fontSize: 13, color: '#6b7280', fontWeight: 'bold' },
-  description: { fontSize: 14, color: '#4b5563', marginBottom: 12, lineHeight: 20 },
+  productName: { fontSize: 17, fontWeight: 'bold', color: '#1e293b' },
+  barcode: { fontSize: 13, color: '#64748b', fontWeight: 'bold' },
+  description: { fontSize: 14, color: '#475569', marginBottom: 12, lineHeight: 20 },
   
   infoRowContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingRight: 10 },
   iconTextGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  infoText: { fontSize: 13, color: '#6b7280', marginLeft: 6, marginRight: 10 },
-  modalText: { fontSize: 15, color: '#4b5563', marginBottom: 20 },
+  infoText: { fontSize: 13, color: '#64748b', marginLeft: 6, marginRight: 10 },
+  modalText: { fontSize: 15, color: '#475569', marginBottom: 20 },
   
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 12 },
-  pendingBadge: { backgroundColor: '#fff7ed', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  pendingBadgeText: { color: '#c2410c', fontWeight: 'bold', fontSize: 13 },
-  actionPillButton: { flexDirection: 'row', backgroundColor: '#0284c7', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 12 },
+  pendingBadge: { backgroundColor: '#fef3c7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  pendingBadgeText: { color: '#d97706', fontWeight: 'bold', fontSize: 12 },
+  actionPillButton: { flexDirection: 'row', backgroundColor: '#005b9f', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   actionPillText: { color: 'white', fontWeight: 'bold', fontSize: 13, marginLeft: 6 },
-  resolvedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  resolvedBadgeText: { color: '#166534', fontWeight: 'bold', fontSize: 14 },
-  emptyText: { textAlign: 'center', color: '#6b7280', fontSize: 15, marginTop: 50 },
+  resolvedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  resolvedBadgeText: { color: '#166534', fontWeight: 'bold', fontSize: 12 },
+  emptyText: { textAlign: 'center', color: '#64748b', fontSize: 15, marginTop: 50 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: 'white', width: '100%', maxHeight: '85%', borderRadius: 15, padding: 20, elevation: 5 },
+  modalContent: { backgroundColor: 'white', width: '100%', maxHeight: '85%', borderRadius: 12, padding: 20, elevation: 5 },
   modalCloseButton: { alignSelf: 'flex-end', padding: 5, marginBottom: 5 },
-  modalCloseText: { fontSize: 20, color: '#6b7280', fontWeight: 'bold' },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#111827', marginBottom: 5 },
-  modalBarcode: { fontSize: 14, color: '#6b7280', marginBottom: 20 },
-  modalLabel: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginBottom: 5 },
-  modalDescription: { fontSize: 15, color: '#4b5563', lineHeight: 22, marginBottom: 20 },
-  modalDate: { fontSize: 14, color: '#6b7280', marginBottom: 20 },
-  modalTextArea: { height: 120, borderColor: '#d1d5db', borderWidth: 1, borderRadius: 8, padding: 12, marginTop: 15, textAlignVertical: 'top', fontSize: 15, color: '#1f2937', backgroundColor: '#f9fafb' },
+  modalCloseText: { fontSize: 20, color: '#64748b', fontWeight: 'bold' },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#1e293b', marginBottom: 5 },
+  modalBarcode: { fontSize: 14, color: '#64748b', marginBottom: 20 },
+  modalLabel: { fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 5 },
+  modalDescription: { fontSize: 15, color: '#475569', lineHeight: 22, marginBottom: 20 },
+  modalDate: { fontSize: 14, color: '#64748b', marginBottom: 20 },
+  
+  modalTextArea: { height: 120, borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 8, padding: 12, marginTop: 15, textAlignVertical: 'top', fontSize: 15, color: '#1e293b', backgroundColor: '#f8fafc' },
+  dateInput: { justifyContent: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1', padding: 12, borderRadius: 8, height: 48, marginBottom: 15 },
 
-  imageSectionContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 15, paddingBottom: 20 },
-  inlineModalImage: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb' },
+  imageSectionContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 15, paddingBottom: 20 },
+  inlineModalImage: { width: '100%', height: 200, borderRadius: 8, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
   zoomHintContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8 },
-  zoomHintText: { color: '#6b7280', fontSize: 13, fontStyle: 'italic', marginLeft: 5 },
-  noImageContainer: { width: '100%', padding: 20, backgroundColor: '#f3f4f6', borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
-  noImageText: { color: '#9ca3af', fontWeight: 'bold', fontStyle: 'italic', marginTop: 10 },
+  zoomHintText: { color: '#64748b', fontSize: 13, fontStyle: 'italic', marginLeft: 5 },
+  noImageContainer: { width: '100%', padding: 20, backgroundColor: '#f1f5f9', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
+  noImageText: { color: '#94a3b8', fontWeight: 'bold', fontStyle: 'italic', marginTop: 10 },
 });

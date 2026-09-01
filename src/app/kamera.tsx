@@ -30,8 +30,8 @@ export default function HomeScreen() {
   const [cameraMode, setCameraMode] = useState<'barcode' | 'photo' | null>(null);
 
   const [barcodeNumber, setBarcodeNumber] = useState('');
-  const [productName, setProductName] = useState('');
-  const [faultCategory, setFaultCategory] = useState('Mekanik Arıza');
+  const [productId, setProductId] = useState(''); // ID tutacak şekilde güncellendi
+  const [faultCategoryId, setFaultCategoryId] = useState('1'); // ID tutacak şekilde güncellendi
   const [defectDescription, setDefectDescription] = useState('');
   
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -196,8 +196,7 @@ export default function HomeScreen() {
   };
 
   const handleSubmit = () => {
-    // 1. Önce boş alan kontrolü
-    if (!barcodeNumber || !productName || !defectDescription) {
+    if (!barcodeNumber || !productId || !defectDescription) {
       Alert.alert("Eksik Bilgi", "Lütfen tüm metin alanlarını doldurun.");
       return;
     }
@@ -205,11 +204,16 @@ export default function HomeScreen() {
       Alert.alert("Eksik Bilgi", "Lütfen arızalı ürünün fotoğrafını çekin.");
       return;
     }
-    
-    // 2. GÖNDERMEDEN ÖNCE ONAY PENCERESİ
+
+    // Kullanıcıya ID değil isim göstermek için verileri buluyoruz
+    const selectedProduct = products.find(p => p.id?.toString() === productId);
+    const displayProductName = selectedProduct ? selectedProduct.name : "Bilinmeyen Ürün";
+    const categoryNames: any = { "1": "Mekanik Arıza", "2": "Elektronik Arıza", "3": "Kozmetik Hasar", "4": "Diğer" };
+    const displayCategoryName = categoryNames[faultCategoryId] || faultCategoryId;
+
     Alert.alert(
       "Kaydı Onaylayın",
-      `Şu bilgileri sisteme gönderiyorsunuz:\n\n Ürün: ${productName}\n Barkod: ${barcodeNumber}\n Kategori: ${faultCategory}\n\nBu işlemi onaylıyor musunuz?`,
+      `Şu bilgileri sisteme gönderiyorsunuz:\n\n Ürün: ${displayProductName}\n Barkod: ${barcodeNumber}\n Kategori: ${displayCategoryName}\n\nBu işlemi onaylıyor musunuz?`,
       [
         { 
           text: "Vazgeç", 
@@ -217,14 +221,22 @@ export default function HomeScreen() {
         },
         { 
           text: "Evet, Gönder", 
-          style: "default",
-          // 3. Kullanıcı "Evet" derse veriyi API'ye gönder
+          style: "default", 
+          
           onPress: async () => {
+            // === API'YE GİDEN VERİYİ KONSOLA YAZDIR ===
+            console.log("=== API'YE GİDEN VERİ ===", {
+              BarcodeNumber: barcodeNumber,
+              ProductId: productId,
+              DefectDescription: defectDescription,
+              FaultCategoryId: faultCategoryId
+            });
+
             const formData = new FormData();
             formData.append('BarcodeNumber', barcodeNumber);
-            formData.append('ProductName', productName);
+            formData.append('ProductId', productId); // ID Gönderiliyor
             formData.append('DefectDescription', defectDescription);
-            formData.append('FaultCategory', faultCategory);
+            formData.append('FaultCategoryId', faultCategoryId); // ID Gönderiliyor
             
             formData.append('File', {
               uri: photoUri,
@@ -252,7 +264,7 @@ export default function HomeScreen() {
               if (response.ok) {
                 Alert.alert("Başarılı!", "Ürün kaydedildi ve fotoğraf sisteme yüklendi.");
                 setBarcodeNumber('');
-                setProductName('');
+                setProductId('');
                 setDefectDescription('');
                 setPhotoUri(null);
                 fetchDailyReports();  
@@ -474,8 +486,8 @@ export default function HomeScreen() {
               <Text style={styles.label}>Ürün Adı</Text>
               <View style={styles.pickerContainer}>
                 <Picker
-                  selectedValue={productName}
-                  onValueChange={(itemValue) => setProductName(itemValue)}
+                  selectedValue={productId}
+                  onValueChange={(itemValue) => setProductId(itemValue)}
                   style={styles.picker}
                 >
                   <Picker.Item label="Lütfen bir ürün seçin..." value="" color="#999" />
@@ -483,7 +495,7 @@ export default function HomeScreen() {
                     <Picker.Item 
                       key={item.id?.toString() || item.name} 
                       label={item.name} 
-                      value={item.name} 
+                      value={item.id?.toString()} 
                     />
                   ))}
                 </Picker>
@@ -492,14 +504,14 @@ export default function HomeScreen() {
               <Text style={styles.label}>Hata Türü (Kategori)</Text>
               <View style={styles.pickerContainer}>
                 <Picker
-                  selectedValue={faultCategory}
-                  onValueChange={(itemValue) => setFaultCategory(itemValue)}
+                  selectedValue={faultCategoryId}
+                  onValueChange={(itemValue) => setFaultCategoryId(itemValue)}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Mekanik Arıza" value="Mekanik Arıza" />
-                  <Picker.Item label="Elektronik Arıza" value="Elektronik Arıza" />
-                  <Picker.Item label="Kozmetik Hasar" value="Kozmetik Hasar" />
-                  <Picker.Item label="Diğer" value="Diğer" />
+                  <Picker.Item label="Mekanik Arıza" value="1" />
+                  <Picker.Item label="Elektronik Arıza" value="2" />
+                  <Picker.Item label="Kozmetik Hasar" value="3" />
+                  <Picker.Item label="Diğer" value="4" />
                 </Picker>
               </View>
 
