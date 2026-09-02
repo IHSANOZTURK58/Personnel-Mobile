@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker'; // YENİ EKLENDİ
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
@@ -19,7 +19,6 @@ export default function FaultListScreen() {
   const [categoryModalVisible, setCategoryModalVisible] = useState(false); 
   const [timeModalVisible, setTimeModalVisible] = useState(false); 
   
-  // GÜNCELLENDİ: Özel Tarih State'leri (Artık metin değil Date tutuyoruz)
   const [customDateModalVisible, setCustomDateModalVisible] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
@@ -143,7 +142,6 @@ export default function FaultListScreen() {
 
   const categories = ['Tümü', ...Array.from(new Set(faults.map(f => f.productName || f.ProductName))).filter(Boolean)];
 
-  // GÜNCELLENDİ: Tarih metinlerini Date objesinden çıkarıyoruz
   const getTimeLabel = () => {
     switch(timeFilter) {
       case '7gun': return 'Son 7 Gün';
@@ -170,7 +168,6 @@ export default function FaultListScreen() {
     setCustomDateModalVisible(false);
   };
 
-  // GÜNCELLENDİ: Date nesnelerine göre milisaniye (timestamp) bazlı kusursuz filtreleme
   const filteredFaults = faults
     .filter(fault => {
       const isRes = fault.isResolved !== undefined ? fault.isResolved : fault.IsResolved;
@@ -227,6 +224,10 @@ export default function FaultListScreen() {
     const desc = item.defectDescription || item.DefectDescription;
     const cDate = item.createdDate || item.CreatedDate;
     const repName = item.reporterName || item.ReporterName || "Bilinmiyor";
+    
+    // YENİ EKLENEN VERİLER
+    const categoryName = item.faultCategory || item.FaultCategory || "Kategori Belirtilmemiş";
+    const resolverName = item.resolvedByName || item.ResolvedByName || "Bilinmiyor";
 
     return (
       <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => openDetailModal(item)}>
@@ -234,6 +235,9 @@ export default function FaultListScreen() {
           <Text style={styles.productName}>{prodName}</Text>
           <Text style={styles.barcode}>#{barcode}</Text>
         </View>
+        
+        {/* YENİ EKLENEN: Arıza Türü (Her iki tab'da da görünür) */}
+        <Text style={styles.cardCategoryText}>Tür: {categoryName}</Text>
         
         <Text style={styles.description} numberOfLines={3}>{desc}</Text>
         
@@ -268,9 +272,13 @@ export default function FaultListScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <View style={styles.resolvedBadge}>
-              <Ionicons name="checkmark-circle" size={18} color="#166534" style={{ marginRight: 6 }} />
-              <Text style={styles.resolvedBadgeText}>Çözüldü</Text>
+            // YENİ EKLENEN: Çözülenler Tabında Çözen Kişi
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+              <View style={styles.resolvedBadge}>
+                <Ionicons name="checkmark-circle" size={18} color="#166534" style={{ marginRight: 6 }} />
+                <Text style={styles.resolvedBadgeText}>Çözüldü</Text>
+              </View>
+              <Text style={styles.resolverText}>Çözen: {resolverName}</Text>
             </View>
           )}
         </View>
@@ -437,7 +445,7 @@ export default function FaultListScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* GÜNCELLENDİ: ÖZEL TARİH MODALI (Takvim Seçimli) */}
+      {/* ÖZEL TARİH MODALI */}
       <Modal visible={customDateModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCustomDateModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -459,7 +467,7 @@ export default function FaultListScreen() {
                 mode="date"
                 display="default"
                 onChange={(event, selectedDate) => {
-                  setShowStartPicker(false); // Seçim yapıldığında gizle
+                  setShowStartPicker(false); 
                   if (selectedDate) setCustomStartDate(selectedDate);
                 }}
               />
@@ -481,7 +489,7 @@ export default function FaultListScreen() {
                 mode="date"
                 display="default"
                 onChange={(event, selectedDate) => {
-                  setShowEndPicker(false); // Seçim yapıldığında gizle
+                  setShowEndPicker(false); 
                   if (selectedDate) setCustomEndDate(selectedDate);
                 }}
               />
@@ -513,6 +521,10 @@ export default function FaultListScreen() {
                 <Text style={styles.modalTitle}>{selectedFault.productName || selectedFault.ProductName}</Text>
                 <Text style={styles.modalBarcode}>Barkod: {selectedFault.barcodeNumber || selectedFault.BarcodeNumber}</Text>
 
+                {/* YENİ EKLENEN: Detay Modalında Arıza Türü */}
+                <Text style={styles.modalLabel}>Arıza Türü:</Text>
+                <Text style={styles.modalDescription}>{selectedFault.faultCategory || selectedFault.FaultCategory || "Belirtilmemiş"}</Text>
+
                 <Text style={styles.modalLabel}>Arıza Detayı:</Text>
                 <Text style={styles.modalDescription}>{selectedFault.defectDescription || selectedFault.DefectDescription}</Text>
 
@@ -521,6 +533,12 @@ export default function FaultListScreen() {
                     <Text style={styles.modalLabel}>Çözüm Detayı:</Text>
                     <Text style={styles.modalDescription}>
                       {selectedFault.resolutionDetails || selectedFault.ResolutionDetails || "Çözüm açıklaması girilmemiş."}
+                    </Text>
+                    
+                    {/* YENİ EKLENEN: Detay Modalında Çözen Kişi */}
+                    <Text style={styles.modalLabel}>Çözen Kişi:</Text>
+                    <Text style={[styles.modalDescription, { color: '#059669', fontWeight: 'bold' }]}>
+                      {selectedFault.resolvedByName || selectedFault.ResolvedByName || "Bilinmiyor"}
                     </Text>
                     
                     <Text style={styles.modalLabel}>Çözüm Tarihi:</Text>
@@ -601,6 +619,7 @@ export default function FaultListScreen() {
         </View>
       </Modal>
 
+      {/* FOTOĞRAF TAM EKRAN MODALI */}
       <Modal visible={imageFullScreenVisible} transparent={true} onRequestClose={() => setImageFullScreenVisible(false)}>
         <ImageViewer 
           imageUrls={fullScreenImageUrl ? [{ url: fullScreenImageUrl }] : []}
@@ -658,9 +677,14 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: { color: '#005b9f', fontWeight: 'bold' },
   
   card: { backgroundColor: '#ffffff', padding: 16, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   productName: { fontSize: 17, fontWeight: 'bold', color: '#1e293b' },
   barcode: { fontSize: 13, color: '#64748b', fontWeight: 'bold' },
+  
+  // YENİ EKLENEN STİLLER
+  cardCategoryText: { fontSize: 14, color: '#005b9f', fontWeight: '600', marginBottom: 8 },
+  resolverText: { fontSize: 13, color: '#059669', fontWeight: 'bold' },
+
   description: { fontSize: 14, color: '#475569', marginBottom: 12, lineHeight: 20 },
   
   infoRowContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingRight: 10 },
