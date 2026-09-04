@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Stack, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -10,13 +10,20 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState(''); 
   const [userRole, setUserRole] = useState(''); 
 
+  // 401 Hatası (Oturum Zaman Aşımı) durumunda çalışacak merkezi fonksiyon
+  const handleSessionTimeout = async () => {
+    Alert.alert("Oturum Süresi Doldu", "Güvenliğiniz için oturumunuz kapatıldı. Lütfen tekrar giriş yapın.");
+    await AsyncStorage.clear();
+    router.replace('/');
+  };
+
   useEffect(() => {
     fetchUserProfile();
   }, []);
 
   const fetchUserProfile = async () => {
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken'); 
       const response = await axios.get(`${process.env.EXPO_PUBLIC_API_URL}/api/User/profil`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -25,8 +32,12 @@ export default function HomeScreen() {
         setUserName(response.data.data.fullName); 
         setUserRole(response.data.data.role);
       }
-    } catch (error) {
-      console.error("Profil çekme hatası:", error);
+    } catch (error: any) {
+      if (error.response && error.response.status === 401) {
+        await handleSessionTimeout();
+      } else {
+        console.error("Profil çekme hatası:", error);
+      }
     }
   };
 
@@ -36,12 +47,18 @@ export default function HomeScreen() {
       "Hesabınızdan çıkış yapmak istediğinize emin misiniz?",
       [
         { text: "İptal", style: "cancel" },
-        { 
-          text: "Çıkış Yap", 
-          style: "destructive", 
+        {
+          text: "Çıkış Yap",
+          style: "destructive",
           onPress: async () => {
-            await SecureStore.deleteItemAsync('userToken'); 
-            router.replace('/'); 
+            try {
+              console.log("Çıkış işlemi başlatıldı...");
+              await AsyncStorage.clear();
+              console.log("✅ Kasa tamamen boşaltıldı.");
+              router.replace('/');
+            } catch (error) {
+              console.error("Çıkış hatası:", error);
+            }
           }
         }
       ]
@@ -52,7 +69,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen 
         options={{ 
-          title: 'Simfer Hata Rapor Sistemi',
+          title: 'Sersim Hata Rapor Sistemi',
           headerTitleAlign: 'center',
           headerTitleStyle: { 
             color: '#ffffff',

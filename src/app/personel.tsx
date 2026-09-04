@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -32,7 +32,7 @@ export default function PersonelScreen() {
 
  const fetchPersonnel = async () => {
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken');
       
       const tamAdres = `${API_BASE_URL}/Employee-listesi`;
       const response = await axios.get(tamAdres, {
@@ -62,7 +62,7 @@ export default function PersonelScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              const token = await SecureStore.getItemAsync('userToken');
+              const token = await AsyncStorage.getItem('userToken');
               await axios.delete(`${API_BASE_URL}/delete-user/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
               });

@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { useRouter } from 'expo-router'; // EXPO ROUTER KULLANIYORUZ
-import * as SecureStore from 'expo-secure-store';
-import React, { useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
@@ -10,10 +10,40 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Token kontrolü bitene kadar beyaz ekranda dönen yükleniyor state'i
+  const [isCheckingToken, setIsCheckingToken] = useState(true); 
 
   const router = useRouter(); 
-
   const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/api/Auth/login`; 
+
+ useEffect(() => {
+    const checkExistingToken = async () => {
+      try {
+        // Artık AsyncStorage kullanıyoruz
+        const token = await AsyncStorage.getItem('userToken');
+        const role = await AsyncStorage.getItem('userRole');
+
+        console.log("KASADAN GELEN TOKEN:", token ? "VAR" : "YOK");
+
+        if (token && role && token !== "undefined") {
+          setTimeout(() => {
+            if (role === "Admin" || role === "Manager") {
+              router.replace('/home');
+            } else {
+              router.replace('/kamera'); 
+            }
+          }, 300);
+        } else {
+          setIsCheckingToken(false);
+        }
+      } catch (error) {
+        setIsCheckingToken(false);
+      }
+    };
+
+    checkExistingToken();
+  }, []);
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -23,35 +53,48 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      // 1. API İsteğini atıyoruz (Kırmızı çizgi hatasını bu satır çözer)
       const response = await axios.post(API_URL, {
         username: username,
         password: password
       });
 
+      // 2. .NET veriyi otomatik küçük harfe çevirdiği için küçük harfle yakalıyoruz
       const { token, role, fullName } = response.data;
 
-      // Token'ı telefonun güvenli kasasına kaydediyoruz
-      await SecureStore.setItemAsync('userToken', token);
-      await SecureStore.setItemAsync('userRole', role);
-      await SecureStore.setItemAsync('userFullName', fullName);
+      // AsyncStorage'ın boyut sınırı yoktur, devasa token'ı rahatça yazar
+      if (token) await AsyncStorage.setItem('userToken', String(token));
+      if (role) await AsyncStorage.setItem('userRole', String(role));
+      if (fullName) await AsyncStorage.setItem('userFullName', String(fullName));
 
-   // YOL AYRIMI: Yetkiye göre sayfaya yönlendiriyoruz (Alert kullanmadan)
       if (role === "Admin" || role === "Manager") {
-        router.replace('/home'); // Admin'i saniyesinde listeye şutla
+        router.replace('/home');
       } else {
-        router.replace('/kamera'); // İşçiyi saniyesinde kameraya şutla
+        router.replace('/kamera'); 
       }
 
     } catch (error: any) {
+      console.error("GİRİŞ İŞLEMİNDE ÇÖKME:", error); 
+      
       if (error.response && error.response.status === 401) {
         Alert.alert("Giriş Başarısız", "Kullanıcı adı veya şifre hatalı.");
       } else {
-        Alert.alert("Bağlantı Hatası", "Sunucuya ulaşılamadı. IP adresinizi kontrol edin.");
+        // Artık kod hatasını "IP Hatası" sanmıyoruz, genel bir hata basıyoruz.
+        Alert.alert("İşlem Hatası", "Giriş yaparken bir sorun oluştu.");
       }
     } finally {
       setLoading(false);
     }
   };
+
+  // Kontrol aşamasındayken ekranda sadece dönen bir yükleniyor ikonu gösterilir
+  if (isCheckingToken) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f5' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView 
@@ -76,7 +119,7 @@ export default function LoginScreen() {
             placeholder="Şifre"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry={!showPassword} // Göz açıksa gizlemeyi iptal et
+            secureTextEntry={!showPassword}
           />
           <TouchableOpacity 
             style={styles.eyeIcon} 
@@ -145,7 +188,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
   },
-  /* İŞTE YENİ EKLENEN KISIM BURASI */
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -163,7 +205,6 @@ const styles = StyleSheet.create({
   eyeIcon: {
     padding: 15,
   },
-  /* YENİ EKLENEN KISIM BİTTİ */
   button: {
     backgroundColor: '#2563eb',
     padding: 15,

@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -28,10 +28,11 @@ export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [cameraMode, setCameraMode] = useState<'barcode' | 'photo' | null>(null);
+  const [categories, setCategories] = useState<any[]>([]);
 
   const [barcodeNumber, setBarcodeNumber] = useState('');
-  const [productId, setProductId] = useState(''); // ID tutacak şekilde güncellendi
-  const [faultCategoryId, setFaultCategoryId] = useState('1'); // ID tutacak şekilde güncellendi
+  const [productId, setProductId] = useState(''); 
+  const [faultCategoryId, setFaultCategoryId] = useState('1'); 
   const [defectDescription, setDefectDescription] = useState('');
   
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -52,10 +53,16 @@ export default function HomeScreen() {
   const [historyImageLoading, setHistoryImageLoading] = useState(false);
   const [historyImageFullScreen, setHistoryImageFullScreen] = useState(false);
 
+  const handleSessionTimeout = async () => {
+    Alert.alert("Oturum Süresi Doldu", "Güvenliğiniz için oturumunuz kapatıldı. Lütfen tekrar giriş yapın.");
+    await AsyncStorage.clear();
+    router.replace('/');
+  };
+
   const fetchDailyReports = async () => {
     setLoadingReports(true);
     try {
-        const token = await SecureStore.getItemAsync('userToken'); 
+       const token = await AsyncStorage.getItem('userToken'); 
         const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/my-daily-reports`, {
             method: 'GET',
             headers: {
@@ -63,6 +70,11 @@ export default function HomeScreen() {
                 'Content-Type': 'application/json'
             }
         });
+
+        if (response.status === 401) {
+          await handleSessionTimeout();
+          return;
+        }
 
         if (response.ok) {
             const data = await response.json();
@@ -78,10 +90,15 @@ export default function HomeScreen() {
   const fetchHistoryImageUrl = async (fileName: string) => {
     setHistoryImageLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken'); 
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/get-image-url/${fileName}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (response.status === 401) {
+        await handleSessionTimeout();
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -107,13 +124,37 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
+  fetchCategories();
+}, []);
+
+const fetchCategories = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/lookup/categories`;
+    
+    const response = await fetch(apiUrl, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+   if (response.ok) {
+  const json = await response.json();
+  // API artık doğrudan dizi gönderdiği için json'ın kendisini alıyoruz
+  const categoryList = Array.isArray(json) ? json : (json.data || []); 
+  setCategories(categoryList);
+    }
+  } catch (error) {
+    console.error("Kategoriler çekilemedi:", error);
+  }
+};
+
+  useEffect(() => {
     fetchDailyReports();
   }, []);
 
   useEffect(() => {
     const fetchUserData = async () => {
-      const role = await SecureStore.getItemAsync('userRole');
-      const fullName = await SecureStore.getItemAsync('userFullName');
+      const role = await AsyncStorage.getItem('userRole');
+      const fullName = await AsyncStorage.getItem('userFullName');
       setUserRole(role);
       setUserName(fullName);
     };
@@ -122,13 +163,18 @@ export default function HomeScreen() {
     const fetchProducts = async () => {
       try {
         const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/lookup/products`;
-        const jwtToken = await SecureStore.getItemAsync('userToken');
+        const jwtToken = await AsyncStorage.getItem('userToken');
         const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${jwtToken}`
           }
         });
+
+        if (response.status === 401) {
+          await handleSessionTimeout();
+          return;
+        }
 
         const textResponse = await response.text();
         if (response.ok) {
@@ -153,9 +199,7 @@ export default function HomeScreen() {
           text: "Çıkış Yap", 
           style: "destructive",
           onPress: async () => {
-            await SecureStore.deleteItemAsync('userToken');
-            await SecureStore.deleteItemAsync('userRole');
-            await SecureStore.deleteItemAsync('userFullName');
+            await AsyncStorage.clear();
             router.replace('/'); 
           }
         }
@@ -204,12 +248,13 @@ export default function HomeScreen() {
       Alert.alert("Eksik Bilgi", "Lütfen arızalı ürünün fotoğrafını çekin.");
       return;
     }
+// Seçilen ürünü bul
+const selectedProduct = products.find(p => p.id?.toString() === productId);
+const displayProductName = selectedProduct ? selectedProduct.name : "Bilinmeyen Ürün";
 
-    // Kullanıcıya ID değil isim göstermek için verileri buluyoruz
-    const selectedProduct = products.find(p => p.id?.toString() === productId);
-    const displayProductName = selectedProduct ? selectedProduct.name : "Bilinmeyen Ürün";
-    const categoryNames: any = { "1": "Mekanik Arıza", "2": "Elektronik Arıza", "3": "Kozmetik Hasar", "4": "Diğer" };
-    const displayCategoryName = categoryNames[faultCategoryId] || faultCategoryId;
+// Seçilen kategoriyi dinamik listeden bul
+const selectedCategory = categories.find(c => c.id?.toString() === faultCategoryId);
+const displayCategoryName = selectedCategory ? selectedCategory.name : "Belirtilmemiş Kategori";
 
     Alert.alert(
       "Kaydı Onaylayın",
@@ -224,19 +269,11 @@ export default function HomeScreen() {
           style: "default", 
           
           onPress: async () => {
-            // === API'YE GİDEN VERİYİ KONSOLA YAZDIR ===
-            console.log("=== API'YE GİDEN VERİ ===", {
-              BarcodeNumber: barcodeNumber,
-              ProductId: productId,
-              DefectDescription: defectDescription,
-              FaultCategoryId: faultCategoryId
-            });
-
             const formData = new FormData();
             formData.append('BarcodeNumber', barcodeNumber);
-            formData.append('ProductId', productId); // ID Gönderiliyor
+            formData.append('ProductId', productId); 
             formData.append('DefectDescription', defectDescription);
-            formData.append('FaultCategoryId', faultCategoryId); // ID Gönderiliyor
+            formData.append('FaultCategoryId', faultCategoryId); 
             
             formData.append('File', {
               uri: photoUri,
@@ -246,7 +283,7 @@ export default function HomeScreen() {
 
             try {
               const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/report-faulty-product`;
-              const jwtToken = await SecureStore.getItemAsync('userToken'); 
+              const jwtToken = await AsyncStorage.getItem('userToken'); 
 
               if (!jwtToken) {
                 Alert.alert("Hata", "Oturum süreniz dolmuş, lütfen tekrar giriş yapın.");
@@ -260,6 +297,11 @@ export default function HomeScreen() {
                 },
                 body: formData,
               });
+
+              if (response.status === 401) {
+                await handleSessionTimeout();
+                return;
+              }
 
               if (response.ok) {
                 Alert.alert("Başarılı!", "Ürün kaydedildi ve fotoğraf sisteme yüklendi.");
@@ -430,7 +472,7 @@ export default function HomeScreen() {
             style={styles.camera}
             facing="back"
             onBarcodeScanned={cameraMode === 'barcode' ? handleBarcodeScanned : undefined}
-            barcodeScannerSettings={cameraMode === 'barcode' ? { barcodeTypes: ["qr", "ean13", "ean8", "code128"] } : undefined}
+            barcodeScannerSettings={cameraMode === 'barcode' ? { barcodeTypes: ["qr", "ean13", "ean8", "code128", "code39", "code93", "itf14"] } : undefined}
           />
           
           {cameraMode === 'photo' && (
@@ -454,7 +496,7 @@ export default function HomeScreen() {
             
             <View style={styles.headerContainer}>
               <View>
-                <Text style={styles.headerTitle}>Simfer Personel</Text>
+                <Text style={styles.headerTitle}>Sersim Personel</Text>
                 {userName && (
                   <Text style={styles.userNameText}>👤 Hoş geldin, {userName}</Text>
                 )}
@@ -501,19 +543,24 @@ export default function HomeScreen() {
                 </Picker>
               </View>
 
-              <Text style={styles.label}>Hata Türü (Kategori)</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={faultCategoryId}
-                  onValueChange={(itemValue) => setFaultCategoryId(itemValue)}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Mekanik Arıza" value="1" />
-                  <Picker.Item label="Elektronik Arıza" value="2" />
-                  <Picker.Item label="Kozmetik Hasar" value="3" />
-                  <Picker.Item label="Diğer" value="4" />
-                </Picker>
-              </View>
+<Text style={styles.label}>Hata Türü (Kategori)</Text>
+<View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={faultCategoryId}
+    onValueChange={(itemValue) => setFaultCategoryId(itemValue)}
+    style={styles.picker}
+  >
+    <Picker.Item label="Lütfen bir kategori seçin..." value="" color="#9ca3af" />
+    
+    {categories.map((cat) => (
+      <Picker.Item 
+        key={cat.id?.toString()} 
+        label={cat.name} 
+        value={cat.id?.toString()} 
+      />
+    ))}
+  </Picker>
+</View>
 
               <Text style={styles.label}>Hata Açıklaması</Text>
               <TextInput

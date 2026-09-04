@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Stack, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -35,7 +35,7 @@ export default function PersonelEkleScreen() {
 
     setLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken');
       
       const payload = {
         firstName,

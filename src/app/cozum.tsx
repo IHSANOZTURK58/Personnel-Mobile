@@ -1,16 +1,16 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 export default function CozumEkrani() {
@@ -24,14 +24,14 @@ export default function CozumEkrani() {
     }
 
     try {
-      const jwtToken = await SecureStore.getItemAsync('userToken');
+     const token = await AsyncStorage.getItem('userToken'); 
       const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/resolve`;
 
       const response = await fetch(apiUrl, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwtToken}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           id: parseInt(faultId),

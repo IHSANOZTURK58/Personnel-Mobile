@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as SecureStore from 'expo-secure-store';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ImageViewer from 'react-native-image-zoom-viewer';
@@ -9,13 +11,16 @@ import ImageViewer from 'react-native-image-zoom-viewer';
 export default function FaultListScreen() {
   const [faults, setFaults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'bekleyen' | 'cozulen'>('bekleyen');
+  const [activeTab, setActiveTab] = useState<'bekleyen' | 'cozulen' | 'tumu'>('bekleyen');
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [selectedProduct, setSelectedProduct] = useState<string>('Tümü');
   const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); 
   const [timeFilter, setTimeFilter] = useState<'tumu' | '7gun' | '1ay' | '6ay' | 'ozel'>('tumu');
   
+  const [filterMenuVisible, setFilterMenuVisible] = useState(false);
+  const [productModalVisible, setProductModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false); 
   const [timeModalVisible, setTimeModalVisible] = useState(false); 
   
@@ -46,7 +51,7 @@ export default function FaultListScreen() {
   const fetchFaults = async () => {
     setLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken');
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/get-all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -75,7 +80,7 @@ export default function FaultListScreen() {
     }
 
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken');
       const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/resolve`;
 
       const response = await fetch(apiUrl, {
@@ -105,7 +110,7 @@ export default function FaultListScreen() {
   const fetchImageUrl = async (fileName: string) => {
     setImageLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('userToken');
+      const token = await AsyncStorage.getItem('userToken');
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/get-image-url/${fileName}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -140,7 +145,8 @@ export default function FaultListScreen() {
     setIsScannerVisible(false); 
   };
 
-  const categories = ['Tümü', ...Array.from(new Set(faults.map(f => f.productName || f.ProductName))).filter(Boolean)];
+  const productList = ['Tümü', ...Array.from(new Set(faults.map(f => f.productName || f.ProductName))).filter(Boolean)];
+  const categoryList = ['Tümü', ...Array.from(new Set(faults.map(f => f.faultCategory || f.FaultCategory))).filter(Boolean)];
 
   const getTimeLabel = () => {
     switch(timeFilter) {
@@ -166,39 +172,54 @@ export default function FaultListScreen() {
     }
     setTimeFilter('ozel');
     setCustomDateModalVisible(false);
+    setTimeout(() => setFilterMenuVisible(true), 100);
   };
 
-  const filteredFaults = faults
-    .filter(fault => {
-      const isRes = fault.isResolved !== undefined ? fault.isResolved : fault.IsResolved;
-      const matchesTab = activeTab === 'bekleyen' ? isRes === false : isRes === true;
-      
-      const barcode = fault.barcodeNumber || fault.BarcodeNumber || '';
-      const matchesSearch = barcode.toString().toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const prodName = fault.productName || fault.ProductName;
-      const matchesCategory = selectedCategory === 'Tümü' || prodName === selectedCategory;
+  const baseFilteredFaults = faults.filter(fault => {
+    const barcode = fault.barcodeNumber || fault.BarcodeNumber || '';
+    const matchesSearch = barcode.toString().toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const prodName = fault.productName || fault.ProductName;
+    const matchesProduct = selectedProduct === 'Tümü' || prodName === selectedProduct;
 
-      const faultDate = new Date(fault.createdDate || fault.CreatedDate).getTime();
-      const now = new Date().getTime();
-      let matchesTime = true;
+    const catName = fault.faultCategory || fault.FaultCategory;
+    const matchesCategory = selectedCategory === 'Tümü' || catName === selectedCategory;
 
-      if (timeFilter === '7gun') matchesTime = faultDate >= (now - 7 * 24 * 60 * 60 * 1000);
-      else if (timeFilter === '1ay') matchesTime = faultDate >= (now - 30 * 24 * 60 * 60 * 1000);
-      else if (timeFilter === '6ay') matchesTime = faultDate >= (now - 180 * 24 * 60 * 60 * 1000);
-      else if (timeFilter === 'ozel' && customStartDate && customEndDate) {
-        const sTime = new Date(customStartDate).setHours(0, 0, 0, 0);
-        const eTime = new Date(customEndDate).setHours(23, 59, 59, 999);
-        matchesTime = faultDate >= sTime && faultDate <= eTime;
-      }
-      
-      return matchesTab && matchesSearch && matchesCategory && matchesTime;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(a.createdDate || a.CreatedDate).getTime();
-      const dateB = new Date(b.createdDate || b.CreatedDate).getTime();
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-    });
+    const faultDate = new Date(fault.createdDate || fault.CreatedDate).getTime();
+    const now = new Date().getTime();
+    let matchesTime = true;
+
+    if (timeFilter === '7gun') matchesTime = faultDate >= (now - 7 * 24 * 60 * 60 * 1000);
+    else if (timeFilter === '1ay') matchesTime = faultDate >= (now - 30 * 24 * 60 * 60 * 1000);
+    else if (timeFilter === '6ay') matchesTime = faultDate >= (now - 180 * 24 * 60 * 60 * 1000);
+    else if (timeFilter === 'ozel' && customStartDate && customEndDate) {
+      const sTime = new Date(customStartDate).setHours(0, 0, 0, 0);
+      const eTime = new Date(customEndDate).setHours(23, 59, 59, 999);
+      matchesTime = faultDate >= sTime && faultDate <= eTime;
+    }
+
+    return matchesSearch && matchesProduct && matchesCategory && matchesTime;
+  });
+
+  const pendingCount = baseFilteredFaults.filter(item => {
+    const isRes = item.isResolved !== undefined ? item.isResolved : item.IsResolved;
+    return isRes === false;
+  }).length;
+
+  const resolvedCount = baseFilteredFaults.filter(item => {
+    const isRes = item.isResolved !== undefined ? item.isResolved : item.IsResolved;
+    return isRes === true;
+  }).length;
+
+  const filteredFaults = baseFilteredFaults.filter(fault => {
+    if (activeTab === 'tumu') return true;
+    const isRes = fault.isResolved !== undefined ? fault.isResolved : fault.IsResolved;
+    return activeTab === 'bekleyen' ? isRes === false : isRes === true;
+  }).sort((a, b) => {
+    const dateA = new Date(a.createdDate || a.CreatedDate).getTime();
+    const dateB = new Date(b.createdDate || b.CreatedDate).getTime();
+    return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+  });
 
   const getImageName = (fault: any) => {
     if (!fault) return null;
@@ -225,7 +246,6 @@ export default function FaultListScreen() {
     const cDate = item.createdDate || item.CreatedDate;
     const repName = item.reporterName || item.ReporterName || "Bilinmiyor";
     
-    // YENİ EKLENEN VERİLER
     const categoryName = item.faultCategory || item.FaultCategory || "Kategori Belirtilmemiş";
     const resolverName = item.resolvedByName || item.ResolvedByName || "Bilinmiyor";
 
@@ -236,7 +256,6 @@ export default function FaultListScreen() {
           <Text style={styles.barcode}>#{barcode}</Text>
         </View>
         
-        {/* YENİ EKLENEN: Arıza Türü (Her iki tab'da da görünür) */}
         <Text style={styles.cardCategoryText}>Tür: {categoryName}</Text>
         
         <Text style={styles.description} numberOfLines={3}>{desc}</Text>
@@ -272,10 +291,9 @@ export default function FaultListScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            // YENİ EKLENEN: Çözülenler Tabında Çözen Kişi
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
               <View style={styles.resolvedBadge}>
-                <Ionicons name="checkmark-circle" size={18} color="#166534" style={{ marginRight: 6 }} />
+                <Ionicons name="checkmark-circle" size={18} color="#0a0d0b" style={{ marginRight: 6 }} />
                 <Text style={styles.resolvedBadgeText}>Çözüldü</Text>
               </View>
               <Text style={styles.resolverText}>Çözen: {resolverName}</Text>
@@ -284,19 +302,74 @@ export default function FaultListScreen() {
         </View>
       </TouchableOpacity>
     );
-  };
+  }; 
 
-  const resolvedCount = faults.filter(f => f.isResolved === true || f.IsResolved === true).length;
-  const pendingCount = faults.length - resolvedCount;
+  const handleExportAndShare = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      
+      let queryParams = `?tab=${activeTab}&category=${encodeURIComponent(selectedCategory)}&product=${encodeURIComponent(selectedProduct)}&time=${timeFilter}`;
+      
+      if (searchQuery) {
+        queryParams += `&search=${encodeURIComponent(searchQuery)}`;
+      }
+      
+      if (timeFilter === 'ozel' && customStartDate && customEndDate) {
+        queryParams += `&startDate=${customStartDate.toISOString()}&endDate=${customEndDate.toISOString()}`;
+      }
 
+      const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/FaultyProducts/faulty-products-excel${queryParams}`;
+
+      const timestamp = new Date().getTime();
+      const fileName = `Simfer_Ariza_Raporu_${timestamp}.xlsx`;
+      const localFilePath = FileSystem.documentDirectory + fileName;
+
+      Alert.alert("İşlem Başladı", "Filtrelenmiş Excel dosyası hazırlanıyor...");
+
+      const { uri, status } = await FileSystem.downloadAsync(apiUrl, localFilePath, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (status === 200) {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Filtrelenmiş Simfer Raporu',
+            UTI: 'com.microsoft.excel.xls' 
+          });
+        } else {
+          Alert.alert("Hata", "Bu cihazda paylaşım menüsü desteklenmiyor.");
+        }
+      } else {
+        Alert.alert("İndirme Başarısız", `Sunucu hatası: ${status}`);
+      }
+    } catch (error) {
+      Alert.alert("Sistem Hatası", String(error));
+      console.error(error);
+    }
+  };                                             
+  
   return (
-    <View style={styles.container}>
+    <View style={styles.container}>                        
       
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Arıza Listesi</Text>
+        
+        {/* EXCEL BUTONU (KOYU YEŞİL) */}
+        <TouchableOpacity 
+          style={{ backgroundColor: '#217346', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }} 
+          onPress={handleExportAndShare}
+        >
+          <Ionicons name="document-text-outline" size={18} color="white" style={{ marginRight: 6 }} />
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>Excel</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.tabContainer}>
+        <TouchableOpacity style={[styles.tabButton, activeTab === 'tumu' && styles.activeTab]} onPress={() => setActiveTab('tumu')}>
+          <Text style={[styles.tabText, activeTab === 'tumu' && styles.activeTabText]}>Tümü ({pendingCount + resolvedCount})</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[styles.tabButton, activeTab === 'bekleyen' && styles.activeTab]} onPress={() => setActiveTab('bekleyen')}>
           <Text style={[styles.tabText, activeTab === 'bekleyen' && styles.activeTabText]}>Bekleyenler ({pendingCount})</Text>
         </TouchableOpacity>
@@ -322,28 +395,15 @@ export default function FaultListScreen() {
               <Ionicons name="close-circle" size={20} color="#9ca3af" />
             </TouchableOpacity>
           )}
-        </View>
-      </View>
-
-      <View style={styles.filtersScrollContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
           
-          <TouchableOpacity style={styles.filterChip} onPress={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}>
-            <Ionicons name={sortOrder === 'desc' ? "arrow-down-outline" : "arrow-up-outline"} size={16} color="#005b9f" />
-            <Text style={styles.filterChipText}>{sortOrder === 'desc' ? "En Yeni" : "En Eski"}</Text>
+          {/* FİLTRE BUTONU */}
+          <TouchableOpacity onPress={() => setFilterMenuVisible(true)} style={styles.filterMenuButton}>
+            <Ionicons name="options-outline" size={26} color="#005b9f" />
+            {(selectedProduct !== 'Tümü' || selectedCategory !== 'Tümü' || timeFilter !== 'tumu') && (
+              <View style={styles.filterActiveDot} />
+            )}
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.filterChip} onPress={() => setTimeModalVisible(true)}>
-            <Ionicons name="calendar-outline" size={16} color="#005b9f" />
-            <Text style={styles.filterChipText}>{getTimeLabel()}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.filterChip} onPress={() => setCategoryModalVisible(true)}>
-            <Ionicons name="layers-outline" size={16} color="#005b9f" />
-            <Text style={styles.filterChipText}>{selectedCategory === 'Tümü' ? 'Tüm Kategoriler' : selectedCategory}</Text>
-          </TouchableOpacity>
-
-        </ScrollView>
+        </View>
       </View>
 
       {loading ? (
@@ -356,7 +416,7 @@ export default function FaultListScreen() {
           contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              {searchQuery.length > 0 || selectedCategory !== 'Tümü' || timeFilter !== 'tumu'
+              {searchQuery.length > 0 || selectedProduct !== 'Tümü' || selectedCategory !== 'Tümü' || timeFilter !== 'tumu'
                 ? 'Seçtiğiniz filtrelere uygun arıza bulunamadı.' 
                 : 'Bu listede hiç kayıt bulunmuyor.'}
             </Text>
@@ -364,38 +424,103 @@ export default function FaultListScreen() {
         />
       )}
 
-      {/* TARAYICI MODALI */}
-      <Modal visible={isScannerVisible} transparent={true} animationType="slide">
-        <View style={styles.scannerContainer}>
-          <CameraView 
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            onBarcodeScanned={handleBarCodeScanned}
-          />
-          <View style={styles.scannerOverlay}>
-            <View style={styles.scannerTarget} />
-            <Text style={styles.scannerText}>Ürün barkodunu çerçeveye hizalayın</Text>
+      {/* İŞLEMLER VE FİLTRE MENÜSÜ MODALI */}
+      <Modal visible={filterMenuVisible} transparent={true} animationType="fade" onRequestClose={() => setFilterMenuVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setFilterMenuVisible(false)}>
+          <View style={styles.dropdownModalContent}>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 10 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1f2937' }}>Filtre Seçenekleri</Text>
+              <TouchableOpacity onPress={() => setFilterMenuVisible(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={[styles.filterChip, { marginBottom: 10, paddingVertical: 12 }]} onPress={() => { setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc'); }}>
+              <Ionicons name={sortOrder === 'desc' ? "arrow-down-outline" : "arrow-up-outline"} size={18} color="#005b9f" />
+              <Text style={[styles.filterChipText, { fontSize: 14 }]}>{sortOrder === 'desc' ? "Sıralama: En Yeni Üstte" : "Sıralama: En Eski Üstte"}</Text>
+            </TouchableOpacity>
+
+            {/* ZAMAN FİLTRESİ BUTONU */}
+            <TouchableOpacity 
+              style={[styles.filterChip, { marginBottom: 10, paddingVertical: 12 }, timeFilter !== 'tumu' && { backgroundColor: '#e0f2fe', borderColor: '#38bdf8' }]} 
+              onPress={() => { setFilterMenuVisible(false); setTimeout(() => setTimeModalVisible(true), 100); }}
+            >
+              <Ionicons name="calendar-outline" size={18} color={timeFilter !== 'tumu' ? "#0284c7" : "#005b9f"} />
+              <Text style={[styles.filterChipText, { fontSize: 14 }, timeFilter !== 'tumu' && { color: '#0369a1' }]}>Zaman: {getTimeLabel()}</Text>
+            </TouchableOpacity>
+
+            {/* ÜRÜN FİLTRESİ BUTONU */}
+            <TouchableOpacity 
+              style={[styles.filterChip, { marginBottom: 10, paddingVertical: 12 }, selectedProduct !== 'Tümü' && { backgroundColor: '#e0f2fe', borderColor: '#38bdf8' }]} 
+              onPress={() => { setFilterMenuVisible(false); setTimeout(() => setProductModalVisible(true), 100); }}
+            >
+              <Ionicons name="cube-outline" size={18} color={selectedProduct !== 'Tümü' ? "#0284c7" : "#005b9f"} />
+              <Text style={[styles.filterChipText, { fontSize: 14 }, selectedProduct !== 'Tümü' && { color: '#0369a1' }]} numberOfLines={1}>Ürün: {selectedProduct}</Text>
+            </TouchableOpacity>
+
+            {/* KATEGORİ FİLTRESİ BUTONU */}
+            <TouchableOpacity 
+              style={[styles.filterChip, { marginBottom: 10, paddingVertical: 12 }, selectedCategory !== 'Tümü' && { backgroundColor: '#e0f2fe', borderColor: '#38bdf8' }]} 
+              onPress={() => { setFilterMenuVisible(false); setTimeout(() => setCategoryModalVisible(true), 100); }}
+            >
+              <Ionicons name="layers-outline" size={18} color={selectedCategory !== 'Tümü' ? "#0284c7" : "#005b9f"} />
+              <Text style={[styles.filterChipText, { fontSize: 14 }, selectedCategory !== 'Tümü' && { color: '#0369a1' }]} numberOfLines={1}>Hata Türü: {selectedCategory}</Text>
+            </TouchableOpacity>
+
+            {/* FİLTRELERİ TEMİZLE BUTONU (PASTEL KIRMIZI) */}
+            {(selectedProduct !== 'Tümü' || selectedCategory !== 'Tümü' || timeFilter !== 'tumu') && (
+              <TouchableOpacity 
+                style={{ marginTop: 10, backgroundColor: '#fee2e2', padding: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#fca5a5' }} 
+                onPress={() => {
+                  setSelectedProduct('Tümü');
+                  setSelectedCategory('Tümü');
+                  setTimeFilter('tumu');
+                  setSortOrder('desc');
+                }}
+              >
+                <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 14 }}>Filtreleri Temizle</Text>
+              </TouchableOpacity>
+            )}
+
           </View>
-          <TouchableOpacity 
-            style={styles.scannerCloseButton}
-            onPress={() => setIsScannerVisible(false)}
-          >
-            <Ionicons name="close" size={32} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ÜRÜN MODALI */}
+      <Modal visible={productModalVisible} transparent={true} animationType="fade" onRequestClose={() => { setProductModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => { setProductModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+          <View style={styles.dropdownModalContent}>
+            <Text style={styles.dropdownModalTitle}>Ürün Seçin</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {productList.map((prod, index) => (
+                <TouchableOpacity 
+                  key={index} 
+                  style={[styles.dropdownItem, selectedProduct === prod && styles.dropdownItemActive]} 
+                  onPress={() => { setSelectedProduct(prod as string); setProductModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}
+                >
+                  <Text style={[styles.dropdownItemText, selectedProduct === prod && styles.dropdownItemTextActive]}>
+                    {prod as string}
+                  </Text>
+                  {selectedProduct === prod && <Ionicons name="checkmark-circle" size={20} color="#005b9f" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* KATEGORİ MODALI */}
-      <Modal visible={categoryModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCategoryModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setCategoryModalVisible(false)}>
+      <Modal visible={categoryModalVisible} transparent={true} animationType="fade" onRequestClose={() => { setCategoryModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => { setCategoryModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
           <View style={styles.dropdownModalContent}>
-            <Text style={styles.dropdownModalTitle}>Ürün Kategorisi Seçin</Text>
+            <Text style={styles.dropdownModalTitle}>Hata Türü Seçin</Text>
             <ScrollView style={{ maxHeight: 300 }}>
-              {categories.map((cat, index) => (
+              {categoryList.map((cat, index) => (
                 <TouchableOpacity 
                   key={index} 
                   style={[styles.dropdownItem, selectedCategory === cat && styles.dropdownItemActive]} 
-                  onPress={() => { setSelectedCategory(cat as string); setCategoryModalVisible(false); }}
+                  onPress={() => { setSelectedCategory(cat as string); setCategoryModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}
                 >
                   <Text style={[styles.dropdownItemText, selectedCategory === cat && styles.dropdownItemTextActive]}>
                     {cat as string}
@@ -409,8 +534,8 @@ export default function FaultListScreen() {
       </Modal>
 
       {/* ZAMAN FİLTRESİ MODALI */}
-      <Modal visible={timeModalVisible} transparent={true} animationType="fade" onRequestClose={() => setTimeModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setTimeModalVisible(false)}>
+      <Modal visible={timeModalVisible} transparent={true} animationType="fade" onRequestClose={() => { setTimeModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => { setTimeModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
           <View style={styles.dropdownModalContent}>
             <Text style={styles.dropdownModalTitle}>Zaman Aralığı Seçin</Text>
             <ScrollView style={{ maxHeight: 300 }}>
@@ -427,10 +552,11 @@ export default function FaultListScreen() {
                   onPress={() => { 
                     if (timeOpt.id === 'ozel') {
                       setTimeModalVisible(false);
-                      setCustomDateModalVisible(true);
+                      setTimeout(() => setCustomDateModalVisible(true), 100);
                     } else {
                       setTimeFilter(timeOpt.id as any); 
                       setTimeModalVisible(false); 
+                      setTimeout(() => setFilterMenuVisible(true), 100);
                     }
                   }}
                 >
@@ -446,9 +572,9 @@ export default function FaultListScreen() {
       </Modal>
 
       {/* ÖZEL TARİH MODALI */}
-      <Modal visible={customDateModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCustomDateModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+      <Modal visible={customDateModalVisible} transparent={true} animationType="fade" onRequestClose={() => { setCustomDateModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => { setCustomDateModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>Özel Tarih Aralığı</Text>
             
             <Text style={styles.modalLabel}>Başlangıç Tarihi</Text>
@@ -496,15 +622,15 @@ export default function FaultListScreen() {
             )}
             
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
-              <TouchableOpacity onPress={() => setCustomDateModalVisible(false)} style={{ marginRight: 20, justifyContent: 'center' }}>
+              <TouchableOpacity onPress={() => { setCustomDateModalVisible(false); setTimeout(() => setFilterMenuVisible(true), 100); }} style={{ marginRight: 20, justifyContent: 'center' }}>
                 <Text style={{ color: '#6b7280', fontWeight: 'bold' }}>İptal</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={applyCustomDateFilter} style={styles.actionPillButton}>
+              <TouchableOpacity onPress={() => { applyCustomDateFilter(); setTimeout(() => setFilterMenuVisible(true), 100); }} style={styles.actionPillButton}>
                 <Text style={styles.actionPillText}>Filtrele</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* DETAY MODALI */}
@@ -521,12 +647,21 @@ export default function FaultListScreen() {
                 <Text style={styles.modalTitle}>{selectedFault.productName || selectedFault.ProductName}</Text>
                 <Text style={styles.modalBarcode}>Barkod: {selectedFault.barcodeNumber || selectedFault.BarcodeNumber}</Text>
 
-                {/* YENİ EKLENEN: Detay Modalında Arıza Türü */}
                 <Text style={styles.modalLabel}>Arıza Türü:</Text>
                 <Text style={styles.modalDescription}>{selectedFault.faultCategory || selectedFault.FaultCategory || "Belirtilmemiş"}</Text>
 
                 <Text style={styles.modalLabel}>Arıza Detayı:</Text>
                 <Text style={styles.modalDescription}>{selectedFault.defectDescription || selectedFault.DefectDescription}</Text>
+
+                <Text style={styles.modalLabel}>Kayıt Tarihi:</Text>
+                <Text style={styles.modalDate}>
+                  {new Date(selectedFault.createdDate || selectedFault.CreatedDate).toLocaleDateString('tr-TR')} - {new Date(selectedFault.createdDate || selectedFault.CreatedDate).toLocaleTimeString('tr-TR')}
+                </Text>
+
+                <Text style={styles.modalLabel}>Raporlayan Kişi:</Text>
+                <Text style={styles.modalText}>
+                  {selectedFault.reporterName || selectedFault.ReporterName || "Bilinmiyor"}
+                </Text>
 
                 {(selectedFault.isResolved || selectedFault.IsResolved) && (
                   <>
@@ -535,9 +670,8 @@ export default function FaultListScreen() {
                       {selectedFault.resolutionDetails || selectedFault.ResolutionDetails || "Çözüm açıklaması girilmemiş."}
                     </Text>
                     
-                    {/* YENİ EKLENEN: Detay Modalında Çözen Kişi */}
                     <Text style={styles.modalLabel}>Çözen Kişi:</Text>
-                    <Text style={[styles.modalDescription, { color: '#059669', fontWeight: 'bold' }]}>
+                    <Text style={[styles.modalDescription, { color: '#2a3435d5' }]}>
                       {selectedFault.resolvedByName || selectedFault.ResolvedByName || "Bilinmiyor"}
                     </Text>
                     
@@ -549,16 +683,6 @@ export default function FaultListScreen() {
                     </Text>
                   </>
                 )}
-
-                <Text style={styles.modalLabel}>Kayıt Tarihi:</Text>
-                <Text style={styles.modalDate}>
-                  {new Date(selectedFault.createdDate || selectedFault.CreatedDate).toLocaleDateString('tr-TR')} - {new Date(selectedFault.createdDate || selectedFault.CreatedDate).toLocaleTimeString('tr-TR')}
-                </Text>
-
-                <Text style={styles.modalLabel}>Raporlayan Kişi:</Text>
-                <Text style={styles.modalText}>
-                  {selectedFault.reporterName || selectedFault.ReporterName || "Bilinmiyor"}
-                </Text>
 
                 <View style={styles.imageSectionContainer}>
                   <Text style={styles.modalLabel}>Arıza Fotoğrafı:</Text>
@@ -638,13 +762,34 @@ export default function FaultListScreen() {
         />
       </Modal>
 
+      {/* TARAYICI MODALI */}
+      <Modal visible={isScannerVisible} transparent={true} animationType="slide">
+        <View style={styles.scannerContainer}>
+          <CameraView 
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            onBarcodeScanned={handleBarCodeScanned}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerTarget} />
+            <Text style={styles.scannerText}>Ürün barkodunu çerçeveye hizalayın</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.scannerCloseButton}
+            onPress={() => setIsScannerVisible(false)}
+          >
+            <Ionicons name="close" size={32} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f8' },
-  header: { padding: 20, paddingTop: 50, backgroundColor: '#ffffff' },
+  header: { padding: 20, paddingTop: 50, backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   pageTitle: { fontSize: 22, fontWeight: 'bold', color: '#1f2937' },
   
   tabContainer: { flexDirection: 'row', paddingHorizontal: 20, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
@@ -658,8 +803,10 @@ const styles = StyleSheet.create({
   scannerButton: { marginRight: 10, padding: 5 }, 
   searchInput: { flex: 1, fontSize: 15, color: '#1f2937' },
   clearSearchIcon: { marginLeft: 10, padding: 2 },
+  
+  filterMenuButton: { marginLeft: 10, padding: 5, position: 'relative' },
+  filterActiveDot: { position: 'absolute', top: 2, right: 2, width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#ffffff' },
 
-  filtersScrollContainer: { marginHorizontal: 20, marginBottom: 15 },
   filterChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0', marginRight: 10 },
   filterChipText: { fontSize: 13, color: '#475569', fontWeight: '600', marginLeft: 6 },
 
@@ -681,7 +828,6 @@ const styles = StyleSheet.create({
   productName: { fontSize: 17, fontWeight: 'bold', color: '#1e293b' },
   barcode: { fontSize: 13, color: '#64748b', fontWeight: 'bold' },
   
-  // YENİ EKLENEN STİLLER
   cardCategoryText: { fontSize: 14, color: '#005b9f', fontWeight: '600', marginBottom: 8 },
   resolverText: { fontSize: 13, color: '#059669', fontWeight: 'bold' },
 
