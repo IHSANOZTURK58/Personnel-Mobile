@@ -245,9 +245,11 @@ export default function FaultListScreen() {
     const desc = item.defectDescription || item.DefectDescription;
     const cDate = item.createdDate || item.CreatedDate;
     const repName = item.reporterName || item.ReporterName || "Bilinmiyor";
-    
     const categoryName = item.faultCategory || item.FaultCategory || "Kategori Belirtilmemiş";
     const resolverName = item.resolvedByName || item.ResolvedByName || "Bilinmiyor";
+    
+    // YENİ EKLENEN KISIM: Kartın kendi isResolved durumunu tespit ediyoruz.
+    const isRes = item.isResolved !== undefined ? item.isResolved : item.IsResolved;
 
     return (
       <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => openDetailModal(item)}>
@@ -275,7 +277,8 @@ export default function FaultListScreen() {
         </View>
 
         <View style={styles.cardFooter}>
-          {activeTab === 'bekleyen' ? (
+          {/* YENİ MANTIK: Sekmeye göre değil, kartın kendi durumuna (!isRes) göre çizim yapıyoruz */}
+          {!isRes ? (
             <>
               <View style={styles.pendingBadge}>
                 <Text style={styles.pendingBadgeText}>Bekliyor</Text>
