@@ -5,7 +5,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ImageViewer from 'react-native-image-zoom-viewer';
 
 export default function FaultListScreen() {
@@ -130,13 +130,36 @@ export default function FaultListScreen() {
   };
 
   const openScanner = async () => {
+    // 1. İzin kalıcı olarak reddedildiyse ayarlara yolla
+    if (!permission?.canAskAgain && !permission?.granted) {
+      Alert.alert(
+        "Kamera İzni Gerekli",
+        "Kamera izni cihazınızda kapalı. Lütfen ayarlara giderek barkod okuyucu için izin verin.",
+        [
+          { text: "Vazgeç", style: "cancel" },
+          { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
+        ]
+      );
+      return;
+    }
+
+    // 2. İlk defa soruluyorsa veya geçici reddedildiyse normal izin iste
     if (!permission?.granted) {
       const { granted } = await requestPermission();
       if (!granted) {
-        Alert.alert('İzin Reddedildi', 'Barkod okutmak için kamera izni gereklidir.');
+        Alert.alert(
+          "İzin Reddedildi",
+          "Barkod okutmak için kamera izni gereklidir.",
+          [
+            { text: "Vazgeç", style: "cancel" },
+            { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
+          ]
+        );
         return;
       }
     }
+    
+    // 3. İzin zaten varsa veya yeni verildiyse kamerayı aç
     setIsScannerVisible(true);
   };
 

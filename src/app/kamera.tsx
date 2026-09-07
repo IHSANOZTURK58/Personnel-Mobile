@@ -10,6 +10,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking, // YENİ EKLENDİ
   Modal,
   Platform,
   SafeAreaView,
@@ -138,7 +139,6 @@ const fetchCategories = async () => {
     
    if (response.ok) {
   const json = await response.json();
-  // API artık doğrudan dizi gönderdiği için json'ın kendisini alıyoruz
   const categoryList = Array.isArray(json) ? json : (json.data || []); 
   setCategories(categoryList);
     }
@@ -207,6 +207,32 @@ const fetchCategories = async () => {
     );
   };
 
+  // YENİ EKLENEN FONKSİYON: Akıllı İzin ve Ayarlara Yönlendirme
+  const handlePermissionRequest = async () => {
+    if (!permission?.canAskAgain) {
+      Alert.alert(
+        "Kamera İzni Gerekli",
+        "Kamera izni cihazınızda kapalı. Lütfen ayarlara giderek Simfer Personel uygulamasına kamera erişimi verin.",
+        [
+          { text: "Vazgeç", style: "cancel" },
+          { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
+        ]
+      );
+    } else {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert(
+          "İzin Reddedildi",
+          "Arıza bildirimi yapabilmek için kameraya izin vermeniz gerekmektedir.",
+          [
+            { text: "Vazgeç", style: "cancel" },
+            { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
+          ]
+        );
+      }
+    }
+  };
+
   if (!permission) return <View />;
 
   if (!permission.granted) {
@@ -214,8 +240,9 @@ const fetchCategories = async () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <Text style={styles.infoText}>Kamera izni gerekiyor.</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={requestPermission}>
-            <Text style={styles.buttonText}>İzin Ver</Text>
+          {/* YENİ BUTON MANTIĞI EKLENDİ */}
+          <TouchableOpacity style={styles.primaryButton} onPress={handlePermissionRequest}>
+            <Text style={styles.buttonText}>İzin Ver / Ayarlara Git</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -248,13 +275,11 @@ const fetchCategories = async () => {
       Alert.alert("Eksik Bilgi", "Lütfen arızalı ürünün fotoğrafını çekin.");
       return;
     }
-// Seçilen ürünü bul
-const selectedProduct = products.find(p => p.id?.toString() === productId);
-const displayProductName = selectedProduct ? selectedProduct.name : "Bilinmeyen Ürün";
+    const selectedProduct = products.find(p => p.id?.toString() === productId);
+    const displayProductName = selectedProduct ? selectedProduct.name : "Bilinmeyen Ürün";
 
-// Seçilen kategoriyi dinamik listeden bul
-const selectedCategory = categories.find(c => c.id?.toString() === faultCategoryId);
-const displayCategoryName = selectedCategory ? selectedCategory.name : "Belirtilmemiş Kategori";
+    const selectedCategory = categories.find(c => c.id?.toString() === faultCategoryId);
+    const displayCategoryName = selectedCategory ? selectedCategory.name : "Belirtilmemiş Kategori";
 
     Alert.alert(
       "Kaydı Onaylayın",
