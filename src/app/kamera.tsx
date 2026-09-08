@@ -4,27 +4,11 @@ import { Picker } from '@react-native-picker/picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Linking, // YENİ EKLENDİ
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ImageViewer from 'react-native-image-zoom-viewer';
 
 export default function HomeScreen() {
+  
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -125,27 +109,27 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-  fetchCategories();
-}, []);
+    fetchCategories();
+  }, []);
 
-const fetchCategories = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/lookup/categories`;
-    
-    const response = await fetch(apiUrl, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-   if (response.ok) {
-  const json = await response.json();
-  const categoryList = Array.isArray(json) ? json : (json.data || []); 
-  setCategories(categoryList);
+  const fetchCategories = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const apiUrl = `${process.env.EXPO_PUBLIC_API_URL}/api/lookup/categories`;
+      
+      const response = await fetch(apiUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const json = await response.json();
+        const categoryList = Array.isArray(json) ? json : (json.data || []); 
+        setCategories(categoryList);
+      }
+    } catch (error) {
+      console.error("Kategoriler çekilemedi:", error);
     }
-  } catch (error) {
-    console.error("Kategoriler çekilemedi:", error);
-  }
-};
+  };
 
   useEffect(() => {
     fetchDailyReports();
@@ -207,47 +191,31 @@ const fetchCategories = async () => {
     );
   };
 
-  // YENİ EKLENEN FONKSİYON: Akıllı İzin ve Ayarlara Yönlendirme
-  const handlePermissionRequest = async () => {
-    if (!permission?.canAskAgain) {
-      Alert.alert(
-        "Kamera İzni Gerekli",
-        "Kamera izni cihazınızda kapalı. Lütfen ayarlara giderek Simfer Personel uygulamasına kamera erişimi verin.",
-        [
-          { text: "Vazgeç", style: "cancel" },
-          { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
-        ]
-      );
-    } else {
-      const { granted } = await requestPermission();
-      if (!granted) {
+  const handleCameraOpen = async (mode: 'barcode' | 'photo') => {
+    try {
+      const currentPermission = await requestPermission();
+
+      if (currentPermission.granted) {
+        setCameraMode(mode);
+        return;
+      } 
+      
+      if (currentPermission.canAskAgain) {
+        Alert.alert("Uyarı", "İşleme devam edebilmek için kameraya izin vermeniz gereklidir.");
+      } else {
         Alert.alert(
-          "İzin Reddedildi",
-          "Arıza bildirimi yapabilmek için kameraya izin vermeniz gerekmektedir.",
+          "Kamera İzni Gerekli",
+          "Kamera izni cihazınızda kapalı. Ayarlardan açtığınızı düşünüyorsanız uygulamanın bunu algılaması için lütfen Sersim Personel uygulamasını tamamen kapatıp yeniden açın.",
           [
             { text: "Vazgeç", style: "cancel" },
             { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
           ]
         );
       }
+    } catch (error) {
+      console.error("Kamera izni kontrol hatası:", error);
     }
   };
-
-  if (!permission) return <View />;
-
-  if (!permission.granted) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.infoText}>Kamera izni gerekiyor.</Text>
-          {/* YENİ BUTON MANTIĞI EKLENDİ */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handlePermissionRequest}>
-            <Text style={styles.buttonText}>İzin Ver / Ayarlara Git</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     if (cameraMode === 'barcode') {
@@ -285,14 +253,10 @@ const fetchCategories = async () => {
       "Kaydı Onaylayın",
       `Şu bilgileri sisteme gönderiyorsunuz:\n\n Ürün: ${displayProductName}\n Barkod: ${barcodeNumber}\n Kategori: ${displayCategoryName}\n\nBu işlemi onaylıyor musunuz?`,
       [
-        { 
-          text: "Vazgeç", 
-          style: "cancel" 
-        },
+        { text: "Vazgeç", style: "cancel" },
         { 
           text: "Evet, Gönder", 
           style: "default", 
-          
           onPress: async () => {
             const formData = new FormData();
             formData.append('BarcodeNumber', barcodeNumber);
@@ -352,7 +316,6 @@ const fetchCategories = async () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" />
 
-      {/* Yeni Çekilen Fotoğrafın Tam Ekran Modülü */}
       <Modal visible={isFullScreenMode} transparent={true} animationType="fade">
         <View style={styles.fullScreenModal}>
           <Image source={{ uri: photoUri || '' }} style={styles.fullScreenImage} resizeMode="contain" />
@@ -362,7 +325,6 @@ const fetchCategories = async () => {
         </View>
       </Modal>
 
-      {/* Bugün Bildirdiklerim Listesi Modalı */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -405,11 +367,9 @@ const fetchCategories = async () => {
         </View>
       </Modal>
 
-      {/* Geçmiş Bildirim Detay Modalı */}
       <Modal visible={historyDetailVisible} transparent={true} animationType="fade" onRequestClose={() => setHistoryDetailVisible(false)}>
         <View style={styles.detailModalOverlay}>
           <View style={styles.detailModalContent}>
-            
             <TouchableOpacity style={styles.detailModalCloseButton} onPress={() => setHistoryDetailVisible(false)}>
               <Text style={styles.detailModalCloseText}>✖</Text>
             </TouchableOpacity>
@@ -471,7 +431,6 @@ const fetchCategories = async () => {
         </View>
       </Modal>
 
-      {/* Geçmiş Resim Tam Ekran Görüntüleyici */}
       <Modal visible={historyImageFullScreen} transparent={true} onRequestClose={() => setHistoryImageFullScreen(false)}>
         <ImageViewer 
           imageUrls={historyImageUrl ? [{ url: historyImageUrl }] : []}
@@ -545,7 +504,7 @@ const fetchCategories = async () => {
                   value={barcodeNumber}
                   onChangeText={setBarcodeNumber}
                 />
-                <TouchableOpacity style={styles.scanButton} onPress={() => setCameraMode('barcode')}>
+                <TouchableOpacity style={styles.scanButton} onPress={() => handleCameraOpen('barcode')}>
                   <Text style={styles.scanButtonText}>📷 Okut</Text>
                 </TouchableOpacity>
               </View>
@@ -568,24 +527,24 @@ const fetchCategories = async () => {
                 </Picker>
               </View>
 
-<Text style={styles.label}>Hata Türü (Kategori)</Text>
-<View style={styles.pickerContainer}>
-  <Picker
-    selectedValue={faultCategoryId}
-    onValueChange={(itemValue) => setFaultCategoryId(itemValue)}
-    style={styles.picker}
-  >
-    <Picker.Item label="Lütfen bir kategori seçin..." value="" color="#9ca3af" />
-    
-    {categories.map((cat) => (
-      <Picker.Item 
-        key={cat.id?.toString()} 
-        label={cat.name} 
-        value={cat.id?.toString()} 
-      />
-    ))}
-  </Picker>
-</View>
+              <Text style={styles.label}>Hata Türü (Kategori)</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={faultCategoryId}
+                  onValueChange={(itemValue) => setFaultCategoryId(itemValue)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Lütfen bir kategori seçin..." value="" color="#9ca3af" />
+                  
+                  {categories.map((cat) => (
+                    <Picker.Item 
+                      key={cat.id?.toString()} 
+                      label={cat.name} 
+                      value={cat.id?.toString()} 
+                    />
+                  ))}
+                </Picker>
+              </View>
 
               <Text style={styles.label}>Hata Açıklaması</Text>
               <TextInput
@@ -606,13 +565,13 @@ const fetchCategories = async () => {
                   
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: '#666', marginBottom: 5 }}>Önizlemek için resme dokunun.</Text>
-                    <TouchableOpacity style={styles.retakeButton} onPress={() => setCameraMode('photo')}>
+                    <TouchableOpacity style={styles.retakeButton} onPress={() => handleCameraOpen('photo')}>
                       <Text style={styles.retakeButtonText}>🔄 Yeniden Çek</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.photoButton} activeOpacity={0.8} onPress={() => setCameraMode('photo')}>
+                <TouchableOpacity style={styles.photoButton} activeOpacity={0.8} onPress={() => handleCameraOpen('photo')}>
                   <Text style={styles.photoButtonText}>📸 Kamerayı Aç ve Fotoğraf Çek</Text>
                 </TouchableOpacity>
               )}
@@ -705,7 +664,6 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 14, fontWeight: '600', marginTop: 8, color: '#444' },
   emptyText: { fontStyle: 'italic', color: '#888', textAlign: 'center', marginTop: 20 },
 
-  // DETAY MODALI STİLLERİ
   detailModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   detailModalContent: { backgroundColor: 'white', width: '100%', maxHeight: '85%', borderRadius: 15, padding: 20, elevation: 5 },
   detailModalCloseButton: { alignSelf: 'flex-end', padding: 5, marginBottom: 5 },
